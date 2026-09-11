@@ -139,7 +139,7 @@ private fun PhraseManager(vm: PhrasesViewModel = viewModel()) {
             value = draft,
             onValueChange = { draft = it },
             singleLine = true,
-            label = { Text("e.g. juan@gmail.com") },
+            label = { Text("e.g. user@gmail.com") },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier.weight(1f),
         )

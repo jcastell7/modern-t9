@@ -222,7 +222,7 @@ class TrieEngine internal constructor(
         if (digits.isEmpty()) { editing = null; editingDigits = null; caret = 0 }
         // Only 2-9 compose. '1' is the punctuation key and '0' is space, so the UI never
         // sends them here. A phrase containing symbols is reached by its letter prefix:
-        // four taps of "5826" surfaces juan@gmail.com.
+        // four taps of "5826" surfaces user@gmail.com.
         if (Keypad.isLetterDigit(digit)) {
             val at = caret.coerceIn(0, digits.length)
             shiftLocks(from = at, by = 1)
@@ -269,7 +269,7 @@ class TrieEngine internal constructor(
     override fun onSymbolKey(): Composition? {
         if (digits.isEmpty()) return null
         // The symbol key contributes '1' to the extended encoding, which is how a saved
-        // phrase such as "juan@gmail.com" (5826-1-4624...) continues past its letters.
+        // phrase such as "user@gmail.com" (5826-1-4624...) continues past its letters.
         val extended = digits.toString() + Keypad.PUNCTUATION_KEY
         val matches = phraseTrie.exact(extended, 1).isNotEmpty() ||
             phraseTrie.completions(extended, 1).isNotEmpty()

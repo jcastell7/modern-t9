@@ -31,7 +31,7 @@ class ExtendedEncodingTest {
 
     @Test fun `an email address encodes end to end`() {
         // j5 u8 a2 n6 @1 g4 m6 a2 i4 l5 .1 c2 o6 m6
-        assertEquals("58261462451266", Keypad.encodeExtended("juan@gmail.com"))
+        assertEquals("58261462451266", Keypad.encodeExtended("user@gmail.com"))
     }
 
     @Test fun `a url encodes end to end`() {
@@ -41,7 +41,7 @@ class ExtendedEncodingTest {
 
     @Test fun `the prefix of a phrase is short and typeable`() {
         // Four taps of the local part is the point: it surfaces the whole address.
-        val encoded = Keypad.encodeExtended("juan@gmail.com")
+        val encoded = Keypad.encodeExtended("user@gmail.com")
         assertTrue(encoded.startsWith("5826"))
     }
 
@@ -54,8 +54,8 @@ class ExtendedEncodingTest {
 
     @Test fun `case is ignored`() {
         assertEquals(
-            Keypad.encodeExtended("Juan@Gmail.COM"),
-            Keypad.encodeExtended("juan@gmail.com"),
+            Keypad.encodeExtended("user@Gmail.COM"),
+            Keypad.encodeExtended("user@gmail.com"),
         )
     }
 
@@ -69,14 +69,14 @@ class ExtendedEncodingTest {
     @Test fun `isComplexToken distinguishes phrases from plain words`() {
         assertFalse(Keypad.isComplexToken("hello"))
         assertFalse(Keypad.isComplexToken("señor"))       // folds to letters
-        assertTrue(Keypad.isComplexToken("juan@gmail.com"))
+        assertTrue(Keypad.isComplexToken("user@gmail.com"))
         assertTrue(Keypad.isComplexToken("x.com"))
         assertTrue(Keypad.isComplexToken("abc123"))
         assertTrue(Keypad.isComplexToken("two words"))
     }
 
     @Test fun `strict encoding still rejects complex tokens`() {
-        assertNull(Keypad.encode("juan@gmail.com"))
+        assertNull(Keypad.encode("user@gmail.com"))
         assertNull(Keypad.encode("abc123"))
     }
 }

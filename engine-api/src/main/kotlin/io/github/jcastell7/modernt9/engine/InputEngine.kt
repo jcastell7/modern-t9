@@ -85,7 +85,7 @@ interface InputEngine : AutoCloseable {
      *
      * TouchPal's behaviour (`custom-word-appears.png`): after typing `Juan`, pressing `@`
      * does not insert a character — it recognises that a saved phrase continues from
-     * there and offers `Juan@mail.com`.
+     * there and offers `user@mail.com`.
      *
      * @return the extended composition when at least one phrase still matches, or null
      *   when nothing does, in which case the caller should treat the key as literal `@`.
@@ -189,7 +189,7 @@ interface UserDictionary {
      *
      * Stored verbatim and encoded with [Keypad.encodeExtended], so a short digit prefix
      * surfaces the whole thing as a completion: four taps of `5826` offers
-     * `juan@gmail.com`.
+     * `user@gmail.com`.
      *
      * Case is preserved (unlike [add], which lower-cases), because `MyBank.com` and a
      * capitalised handle matter.

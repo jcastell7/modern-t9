@@ -77,7 +77,7 @@ object Keypad {
      * anything else (@ . : / - _ + …) -> '1', the punctuation key
      * ```
      *
-     * So `juan@gmail.com` -> `58261462451266`. The value is not that anyone types all of
+     * So `user@gmail.com` -> `58261462451266`. The value is not that anyone types all of
      * it, but that the *prefix* matches early: four taps of `5826` surfaces the whole
      * address as a completion.
      *

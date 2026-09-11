@@ -46,19 +46,19 @@ class PhraseTest {
 
     @Test fun `a phrase is offered from its letter prefix`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         type(e, "5826")                                   // j-u-a-n
         val top = e.composition().candidates.first()
-        assertEquals("juan@gmail.com", top.text)
+        assertEquals("user@gmail.com", top.text)
         assertEquals(CandidateSource.PHRASE, top.source)
     }
 
     @Test fun `a phrase outranks a dictionary word on the same prefix`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         type(e, "5826")
         // "juan" is in the dictionary at weight 500; the phrase must still win.
-        assertEquals("juan@gmail.com", e.composition().candidates.first().text)
+        assertEquals("user@gmail.com", e.composition().candidates.first().text)
         assertNotNull(e.composition().candidates.firstOrNull { it.text == "juan" })
     }
 
@@ -85,20 +85,20 @@ class PhraseTest {
 
     @Test fun `selecting a phrase returns it verbatim`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         type(e, "5826")
-        assertEquals("juan@gmail.com", e.selectCandidate(0))
+        assertEquals("user@gmail.com", e.selectCandidate(0))
         assertTrue(e.composition().isEmpty)
     }
 
     @Test fun `a used phrase is reinforced, not learned as a word`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         type(e, "5826")
         e.selectCandidate(0)
         // It must not have leaked into the ordinary learned-word store.
-        assertFalse(e.userDictionary.contains("juan@gmail.com"))
-        assertTrue(e.userDictionary.phrases().any { it.word == "juan@gmail.com" })
+        assertFalse(e.userDictionary.contains("user@gmail.com"))
+        assertTrue(e.userDictionary.phrases().any { it.word == "user@gmail.com" })
     }
 
     @Test fun `phrases list is ordered by weight`() {
@@ -110,12 +110,12 @@ class PhraseTest {
 
     @Test fun `removing a phrase stops it being offered`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         type(e, "5826")
         assertTrue(e.composition().candidates.any { it.source == CandidateSource.PHRASE })
 
         e.reset()
-        assertTrue(e.userDictionary.removePhrase("juan@gmail.com"))
+        assertTrue(e.userDictionary.removePhrase("user@gmail.com"))
         type(e, "5826")
         assertTrue(e.composition().candidates.none { it.source == CandidateSource.PHRASE })
     }
@@ -126,32 +126,32 @@ class PhraseTest {
 
     @Test fun `removing one phrase keeps the others`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
-        e.userDictionary.addPhrase("juan@work.com")
-        e.userDictionary.removePhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
+        e.userDictionary.addPhrase("user@work.com")
+        e.userDictionary.removePhrase("user@gmail.com")
         type(e, "5826")
         val phrases = e.composition().candidates.filter { it.source == CandidateSource.PHRASE }
         assertEquals(1, phrases.size)
-        assertEquals("juan@work.com", phrases.first().text)
+        assertEquals("user@work.com", phrases.first().text)
     }
 
     @Test fun `phrases survive a restart`() {
         engine().apply {
-            userDictionary.addPhrase("juan@gmail.com")
+            userDictionary.addPhrase("user@gmail.com")
             endSession()
             close()
         }
         val revived = engine()
         type(revived, "5826")
-        assertEquals("juan@gmail.com", revived.composition().candidates.first().text)
+        assertEquals("user@gmail.com", revived.composition().candidates.first().text)
     }
 
     @Test fun `phrases are language independent`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         e.switchLanguage("es")     // refused here (no es dictionary), but must not lose it
         type(e, "5826")
-        assertTrue(e.composition().candidates.any { it.text == "juan@gmail.com" })
+        assertTrue(e.composition().candidates.any { it.text == "user@gmail.com" })
     }
 
     @Test fun `blank phrases are rejected`() {
@@ -162,7 +162,7 @@ class PhraseTest {
 
     @Test fun `clear removes phrases as well as learned words`() {
         val e = engine()
-        e.userDictionary.addPhrase("juan@gmail.com")
+        e.userDictionary.addPhrase("user@gmail.com")
         e.learn("hello")
         e.userDictionary.clear()
         assertTrue(e.userDictionary.phrases().isEmpty())
@@ -171,7 +171,7 @@ class PhraseTest {
 
     @Test fun `the digit code shown to the user matches what types it`() {
         // The settings screen shows Keypad.encodeExtended; typing its prefix must work.
-        val phrase = "juan@gmail.com"
+        val phrase = "user@gmail.com"
         val e = engine()
         e.userDictionary.addPhrase(phrase)
         val code = Keypad.encodeExtended(phrase)

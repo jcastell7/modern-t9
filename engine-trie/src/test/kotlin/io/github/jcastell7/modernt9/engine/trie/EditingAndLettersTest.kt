@@ -81,7 +81,7 @@ class EditingAndLettersTest {
     }
 
     @Test fun `a word that cannot be typed is refused`() {
-        assertNull(engine().resumeEditing("juan@mail.com"))
+        assertNull(engine().resumeEditing("user@mail.com"))
         assertNull(engine().resumeEditing(""))
     }
 

@@ -47,11 +47,11 @@ class SymbolKeyAndNewWordTest {
 
     @Test fun `symbol key continues a saved phrase`() {
         val e = engine()
-        e.userDictionary.addPhrase("Juan@mail.com")
+        e.userDictionary.addPhrase("user@mail.com")
         type(e, "5826")                                   // J-u-a-n
         val extended = e.onSymbolKey()
         assertNotNull("pressing @ should extend the phrase match", extended)
-        assertEquals("Juan@mail.com", extended!!.candidates.first().text)
+        assertEquals("user@mail.com", extended!!.candidates.first().text)
         assertEquals(CandidateSource.PHRASE, extended.candidates.first().source)
     }
 
@@ -82,14 +82,14 @@ class SymbolKeyAndNewWordTest {
     @Test fun `unknown words are reported unknown`() {
         val e = engine()
         assertFalse(e.isKnown("zzzqqq"))
-        assertFalse(e.isKnown("Juan@mail.com"))
+        assertFalse(e.isKnown("user@mail.com"))
     }
 
     @Test fun `a saved phrase becomes known`() {
         val e = engine()
-        assertFalse(e.isKnown("Juan@mail.com"))
-        e.userDictionary.addPhrase("Juan@mail.com")
-        assertTrue(e.isKnown("Juan@mail.com"))
+        assertFalse(e.isKnown("user@mail.com"))
+        e.userDictionary.addPhrase("user@mail.com")
+        assertTrue(e.isKnown("user@mail.com"))
     }
 
     @Test fun `a learned word becomes known`() {

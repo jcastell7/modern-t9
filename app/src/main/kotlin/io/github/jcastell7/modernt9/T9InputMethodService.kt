@@ -561,7 +561,7 @@ class T9InputMethodService :
      * `touchpal-layout/new-word.png`.
      *
      * The candidate is read back from the editor rather than tracked as keystrokes: that
-     * is the only way to get the *word* (`Juan@mail.com`) instead of the digits pressed,
+     * is the only way to get the *word* (`user@mail.com`) instead of the digits pressed,
      * and it means the offer reappears if the user returns to a word and presses space
      * again.
      */
