@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="io.github.jcastell7.modernt9.SettingsActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <!--
+      Declared so Android's own language switcher lists both. The in-keyboard language
+      key switches the dictionary directly, which is faster; these exist so the system
+      picker and other apps see the right capabilities.
+    -->
+    <subtype
+        android:label="@string/subtype_en"
+        android:imeSubtypeLocale="en_US"
+        android:languageTag="en-US"
+        android:imeSubtypeMode="keyboard"
+        android:isAsciiCapable="true" />
+    <subtype
+        android:label="@string/subtype_es"
+        android:imeSubtypeLocale="es_419"
+        android:languageTag="es-419"
+        android:imeSubtypeMode="keyboard"
+        android:isAsciiCapable="true" />
+</input-method>

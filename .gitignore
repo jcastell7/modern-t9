@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+bin/
+*.jks
+keystore.properties
+
+
+# Downloaded corpora — regenerable via tools/fetch-wordlists.sh
+tools/corpus/*.txt

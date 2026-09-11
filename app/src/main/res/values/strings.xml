@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Modern T9</string>
+    <string name="subtype_en">English (US)</string>
+    <string name="subtype_es">Español (Latinoamérica)</string>
+
+    <!-- About & licences -->
+    <string name="about_title">About &amp; licences</string>
+    <string name="about_version">Modern T9 %1$s</string>
+    <string name="about_source">Source code</string>
+    <string name="about_source_url">https://github.com/jcastell7/modern-t9</string>
+
+    <string name="licence_app_title">Modern T9</string>
+    <string name="licence_app_body">Free software, licensed under the GNU General Public License v3.0 or later. You may use, study, share and modify it; anything you distribute built from it must stay under the same licence.</string>
+    <string name="licence_app_link">GNU GPL v3.0</string>
+    <string name="licence_app_url">https://www.gnu.org/licenses/gpl-3.0.html</string>
+
+    <string name="licence_dict_title">Dictionaries</string>
+    <string name="licence_dict_body">The English and Spanish word lists are derived from HermitDave/FrequencyWords (OpenSubtitles 2018), licensed under Creative Commons Attribution-ShareAlike 4.0.</string>
+    <string name="licence_dict_source_link">HermitDave/FrequencyWords</string>
+    <string name="licence_dict_source_url">https://github.com/hermitdave/FrequencyWords</string>
+    <string name="licence_dict_licence_link">CC BY-SA 4.0</string>
+    <string name="licence_dict_licence_url">https://creativecommons.org/licenses/by-sa/4.0/</string>
+
+    <string name="licence_libs_title">Open-source libraries</string>
+    <string name="licence_libs_body">Built with AndroidX, Jetpack Compose, Kotlin and androidx.emoji2 (emoji picker), all licensed under the Apache License 2.0.</string>
+    <string name="licence_libs_link">Apache License 2.0</string>
+    <string name="licence_libs_url">https://www.apache.org/licenses/LICENSE-2.0</string>
+</resources>
