@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Modern T9 logo.
+
+  Drawn as strokes rather than text so it renders identically everywhere — an SVG
+  <text> element depends on whichever fonts the viewer has installed. The monoline
+  letterforms with round caps are meant to echo the keypad.
+
+  The 9 follows the shape of Roboto's: a round bowl and a single smooth tail that
+  descends from the bowl's right side and sweeps left to the baseline. Its ink spans
+  exactly the same height as the T (y 130–382). The stroke is 36 — about 7% of the
+  canvas — and the letters sit 14 px apart, close to typeset spacing.
+
+  Colours are the app's own: teal accent #26D0C4 on the keyboard's dark ink #16191C.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Modern T9</title>
+
+  <!-- Teal tile with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="#26D0C4"/>
+
+  <g fill="none" stroke="#16191C" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <!-- T -->
+    <path d="M 94 150 H 236"/>
+    <path d="M 165 150 V 364"/>
+
+    <!-- 9: bowl -->
+    <circle cx="352" cy="214" r="66"/>
+    <!-- 9: one continuous tail, tangent to the bowl, curving to the baseline -->
+    <path d="M 418 214 C 418 305 387 364 314 364"/>
+  </g>
+</svg>
