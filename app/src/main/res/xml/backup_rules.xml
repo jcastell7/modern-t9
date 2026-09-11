@@ -3,12 +3,11 @@
   Backup rules for Android 8.0 – 11 (API 26–30). Android 12+ uses
   data_extraction_rules.xml instead and ignores this file.
 
-  Only settings are backed up. The personal dictionaries — learned words, learned
-  bigrams and saved phrases under files/engines/ — are the user's writing habits and
-  stay on the device. Naming both sides keeps the intent explicit even though an
-  <include> alone would already limit backup to what it lists.
+  This is an allowlist: once an <include> is present, ONLY what it lists is backed up.
+  Settings are included; everything else — in particular the personal dictionaries
+  under files/engines/ (learned words, bigrams, saved phrases) — is excluded by
+  omission and stays on the device.
 -->
 <full-backup-content>
     <include domain="sharedpref" path="settings.xml" />
-    <exclude domain="file" path="engines" />
 </full-backup-content>

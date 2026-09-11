@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -20,11 +22,38 @@ android {
         versionName = "1.0.0"
     }
 
+    // Release signing. The keystore and its passwords live in keystore.properties, which
+    // is gitignored and points at a key stored outside the repository. When the file is
+    // absent — a fresh clone, or CI without secrets — the release build still configures;
+    // it just produces an unsigned APK rather than failing.
+    val keystoreProps = Properties().apply {
+        val file = rootProject.file("keystore.properties")
+        if (file.exists()) file.inputStream().use(::load)
+    }
+    val hasSigning = keystoreProps.getProperty("storeFile")?.let { file(it).exists() } == true &&
+        keystoreProps.getProperty("storePassword") != "CHANGE_ME"
+
+    signingConfigs {
+        if (hasSigning) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+                // v1 is unnecessary on minSdk 26 and would only weaken the signature.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 

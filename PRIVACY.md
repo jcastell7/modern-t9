@@ -74,10 +74,10 @@ device, and its device-transfer tool can move it directly to a new phone. Modern
 restricts both to **settings only** — the chosen engine, language and keyboard size.
 
 Your personal dictionaries — learned words, learned bigrams and saved phrases — are
-**explicitly excluded** from cloud backup and from device-to-device transfer. They never
-leave the phone by either route. The rules are in
-`app/src/main/res/xml/backup_rules.xml` (Android 8–11) and
-`app/src/main/res/xml/data_extraction_rules.xml` (Android 12+).
+**not included** in cloud backup or device-to-device transfer. The backup rules are
+allowlists that name only the settings file, so everything else stays on the phone by
+construction. The rules are in `app/src/main/res/xml/backup_rules.xml` (Android 8–11)
+and `app/src/main/res/xml/data_extraction_rules.xml` (Android 12+).
 
 The consequence is deliberate: on a new phone the keyboard starts with your settings but
 not your writing habits, and relearns them as you type.
