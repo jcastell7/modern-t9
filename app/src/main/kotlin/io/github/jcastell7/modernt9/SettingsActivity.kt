@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -67,7 +67,13 @@ private fun SettingsScreen() {
     var selected by remember { mutableStateOf(Preferences.engineId(context)) }
 
     Scaffold { padding ->
-        Column(Modifier.padding(padding).padding(16.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(padding)
+                .padding(16.dp),
+        ) {
             Text("Modern T9", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 "A T9 keyboard with a pluggable prediction engine. No network access.",
@@ -154,8 +160,8 @@ private fun PhraseManager(vm: PhrasesViewModel = viewModel()) {
     when {
         loading -> Text("Loading…", fontSize = 13.sp)
         phrases.isEmpty() -> Text("No phrases yet.", fontSize = 13.sp)
-        else -> LazyColumn {
-            items(phrases) { row ->
+        else -> Column {
+            phrases.forEach { row ->
                 Row(
                     Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
