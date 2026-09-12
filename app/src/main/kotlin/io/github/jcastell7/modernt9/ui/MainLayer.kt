@@ -100,6 +100,11 @@ fun MainLayer(
                 IconKeySurface(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     onClick = { onAction(KeyAction.TogglePrediction) },
+                    // Swipe down for "?", the way the letter keys give their digit. It
+                    // goes through Literal, so it attaches to the previous word like any
+                    // closing mark.
+                    corner = "?",
+                    onSwipeDown = { onAction(KeyAction.Literal("?")) },
                 ) {
                     Glyph(
                         if (predictionOn) "a✓" else "a",
@@ -112,7 +117,11 @@ fun MainLayer(
                 IconKeySurface(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     background = if (shiftState == ShiftState.OFF) T9Theme.keyFlat else T9Theme.shiftActive,
+                    corner = "!",
                     onClick = { onAction(KeyAction.Shift) },
+                    // Swipe down for "!" — a closing mark, so it attaches to the previous
+                    // word and, being sentence-ending, arms shift for the next.
+                    onSwipeDown = { onAction(KeyAction.Literal("!")) },
                 ) {
                     Text(
                         text = "⇧",
@@ -125,7 +134,7 @@ fun MainLayer(
             }
         }
 
-        BottomRow(metrics, onAction)
+        BottomRow(metrics, languageTag, onAction)
     }
 }
 
@@ -211,7 +220,7 @@ private fun SideStrip(
 }
 
 @Composable
-private fun BottomRow(metrics: KeyboardMetrics, onAction: (KeyAction) -> Unit) {
+private fun BottomRow(metrics: KeyboardMetrics, languageTag: String, onAction: (KeyAction) -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(metrics.bottomRowHeight),
         horizontalArrangement = Arrangement.Start,
@@ -227,29 +236,27 @@ private fun BottomRow(metrics: KeyboardMetrics, onAction: (KeyAction) -> Unit) {
         KeySurface(
             modifier = Modifier.weight(T9Theme.WEIGHT_COMMA).fillMaxSize(),
             label = ",",
+            // Earth symbol in the corner — a plain glyph that renders monochrome in every
+            // font, standing in for the globe that means "hold here to change language".
+            sub = "\u2295",
             labelSize = 22,
             onClick = { onAction(KeyAction.Literal(",")) },
             onLongPress = { onAction(KeyAction.SwitchLanguage) },
             onSwipeDown = { onAction(KeyAction.Literal(";")) },
         )
-        // Space, with the mic hint TouchPal draws in its top-right.
+        // Space, labelled with the active language.
         Box(Modifier.weight(T9Theme.WEIGHT_SPACE).fillMaxSize()) {
             KeySurface(
                 modifier = Modifier.fillMaxSize(),
-                label = "",
+                // The active language, shown where most keyboards show it. "EN·ES" means
+                // both dictionaries are offering candidates at once.
+                label = languageTag.uppercase().replace("+", "·"),
+                labelColor = T9Theme.textSecondary,
+                labelSize = 13,
                 digit = "0",
                 onClick = { onAction(KeyAction.Space) },
                 // The space bar is the "0" key; a downward flick types the digit.
                 onSwipeDown = { onAction(KeyAction.Literal("0")) },
-            )
-            Text(
-                "\u25C9",
-                color = T9Theme.textSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 14.dp, top = 10.dp)
-                    .clickable { onAction(KeyAction.Voice) },
             )
         }
         KeySurface(

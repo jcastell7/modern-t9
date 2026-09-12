@@ -49,6 +49,15 @@ object Punctuation {
         ".", ",", "?", "!", ":", ";", ")", "'", "\"", "@", "/", "-", "_", "%", "…",
     )
 
+    /**
+     * Closing marks that belong to the word before them. When a word was accepted with
+     * an automatic trailing space, one of these should swallow that space — "word ."
+     * is never what anyone meant — and then restore a space after itself so the next
+     * word is still separated. Quotes are deliberately absent: an apostrophe attaches
+     * left but an opening quote does not, and the keyboard cannot tell which was meant.
+     */
+    val CLOSING = setOf(".", ",", "?", "!", ":", ";", ")", "]", "}", "…", "%")
+
     /** Marks that open a clause and should not be followed by a space. */
     val ATTACHES_RIGHT = setOf("(", "¿", "¡", "@", "/", "-", "_", "#", "\"", "'")
 }

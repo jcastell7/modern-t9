@@ -65,7 +65,8 @@ class T9InputMethodService :
     private var composition by mutableStateOf(Composition.Empty)
     private var nextWords by mutableStateOf(emptyList<Candidate>())
     private var shiftState by mutableStateOf(ShiftState.OFF)
-    private var languageLabel by mutableStateOf("EN")
+    /** The active language tag, as Compose state so the space-bar indicator redraws. */
+    private var languageTag by mutableStateOf("en")
     private val punctuation = PunctuationCycler()
 
     private var layer by mutableStateOf(KeyboardLayer.MAIN)
@@ -110,7 +111,7 @@ class T9InputMethodService :
             }
             // Restore the language the user last chose.
             Preferences.language(this@T9InputMethodService)?.let(loaded::switchLanguage)
-            languageLabel = loaded.activeLanguage.uppercase()
+            languageTag = loaded.activeLanguage
             engine = loaded
             // Replay anything typed while we were loading.
             while (pendingActions.isNotEmpty()) handleAction(pendingActions.removeFirst())
@@ -137,7 +138,7 @@ class T9InputMethodService :
                     metrics = metrics,
                     resizing = resizing,
                     shiftState = shiftState,
-                    languageTag = engine?.activeLanguage ?: "en",
+                    languageTag = languageTag,
                     predictionOn = predictionOn,
                     newWord = newWord,
                     longPressOptions = longPressOptions,
@@ -210,7 +211,7 @@ class T9InputMethodService :
         newWord = null
         longPressOptions = emptyList()
         stripLetters = emptyList()
-        languageLabel = engine.activeLanguage.uppercase()
+        languageTag = engine.activeLanguage
         // Arm shift only when the caret really is at the start of a sentence — the
         // field asking for sentence capitalisation is not enough on its own, since the
         // keyboard often opens with the caret in the middle of existing text.
@@ -450,10 +451,13 @@ class T9InputMethodService :
             KeyAction.SwitchLanguage -> {
                 val languages = engine.availableLanguages
                 if (languages.size > 1) {
-                    val next = languages[(languages.indexOf(engine.activeLanguage) + 1) % languages.size]
+                    // Cycle: each language on its own, then all of them together
+                    // (bilingual mode), then back to the first.
+                    val modes = languages + languages.joinToString("+")
+                    val next = modes[(modes.indexOf(engine.activeLanguage) + 1) % modes.size]
                     if (engine.switchLanguage(next)) {
                         Preferences.setLanguage(this, next)
-                        languageLabel = next.uppercase()
+                        languageTag = next
                         punctuation.configure(fieldTypeFor(currentInputEditorInfo?.inputType ?: 0), next)
                         finishPunctuation()
                         currentInputConnection?.finishComposingText()
@@ -478,7 +482,7 @@ class T9InputMethodService :
                 longPressOptions = emptyList()
             }
 
-            KeyAction.Voice, KeyAction.ToggleGestures -> Unit   // not implemented yet
+            KeyAction.ToggleGestures -> Unit   // not implemented yet
 
             // ---- editing pane ----
             is KeyAction.Cursor -> moveCursor(action.dx, action.dy)
@@ -547,7 +551,19 @@ class T9InputMethodService :
                 currentInputConnection?.commitText(applyShift(it), 1)
             }
         }
-        currentInputConnection?.commitText(text, 1)
+        val ic = currentInputConnection
+        if (predictionOn && text in Punctuation.CLOSING) {
+            // Prediction leaves a space after every accepted word. A closing mark must
+            // attach to that word, so the space is swallowed, the mark inserted, and a
+            // space put back after it for the next word.
+            if (precededByAutoSpace()) ic?.deleteSurroundingText(1, 0)
+            ic?.commitText(text, 1)
+            if (!nextCharIsSeparator()) ic?.commitText(" ", 1)
+        } else {
+            // ABC mode has no automatic spaces, so there is nothing to swallow: the
+            // character goes exactly where the caret is.
+            ic?.commitText(text, 1)
+        }
         composition = Composition.Empty
         stripLetters = emptyList()
         if (text in Punctuation.SENTENCE_ENDING && shiftState == ShiftState.OFF) {
@@ -690,6 +706,16 @@ class T9InputMethodService :
      * End of text is deliberately NOT a separator — that is exactly where the automatic
      * space is wanted.
      */
+    /**
+     * True when the caret is right after a single space that follows a word — the space
+     * prediction adds automatically, as opposed to a deliberate double space or the start
+     * of the text.
+     */
+    private fun precededByAutoSpace(): Boolean {
+        val before = currentInputConnection?.getTextBeforeCursor(2, 0)?.toString().orEmpty()
+        return before.length == 2 && before[1] == ' ' && !before[0].isWhitespace()
+    }
+
     private fun nextCharIsSeparator(): Boolean {
         val next = currentInputConnection?.getTextAfterCursor(1, 0)?.toString().orEmpty()
         val first = next.firstOrNull() ?: return false

@@ -96,6 +96,8 @@ private fun KeyLabel(
 fun IconKeySurface(
     modifier: Modifier = Modifier,
     background: Color = T9Theme.keyFlat,
+    /** Small grey hint in the bottom-right corner, like the digits on the letter keys. */
+    corner: String? = null,
     onLongPress: (() -> Unit)? = null,
     onSwipeDown: (() -> Unit)? = null,
     onRepeat: (() -> Unit)? = null,
@@ -119,5 +121,11 @@ fun IconKeySurface(
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+        if (corner != null) {
+            KeyLabel(
+                corner, T9Theme.textSecondary, 13, false,
+                Modifier.align(Alignment.BottomEnd).padding(end = 7.dp, bottom = 3.dp),
+            )
+        }
     }
 }

@@ -29,7 +29,6 @@ sealed interface KeyAction {
     /** Enter or leave live-resize mode. */
     data object ToggleResize : KeyAction
     data object ExpandCandidates : KeyAction
-    data object Voice : KeyAction
 
     data class ShowLayer(val layer: KeyboardLayer) : KeyAction
 

@@ -15,7 +15,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The `custom-word-appears.png` flow: type `Juan`, press `@`, and the saved phrase
+ * The `custom-word-appears.png` flow: type `User`, press `@`, and the saved phrase
  * takes over — plus the `new-word.png` check that decides when to offer saving.
  */
 class SymbolKeyAndNewWordTest {
@@ -23,7 +23,7 @@ class SymbolKeyAndNewWordTest {
     private lateinit var tmp: File
 
     private val dictionary = """
-        juan	500
+        user	500
         hello	900
         the	1000
     """.trimIndent()
@@ -48,7 +48,7 @@ class SymbolKeyAndNewWordTest {
     @Test fun `symbol key continues a saved phrase`() {
         val e = engine()
         e.userDictionary.addPhrase("user@mail.com")
-        type(e, "5826")                                   // J-u-a-n
+        type(e, "8737")                                   // u-s-e-r
         val extended = e.onSymbolKey()
         assertNotNull("pressing @ should extend the phrase match", extended)
         assertEquals("user@mail.com", extended!!.candidates.first().text)

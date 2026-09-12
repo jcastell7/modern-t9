@@ -58,13 +58,23 @@ class TrieEngine internal constructor(
     /** Positions the user has disambiguated from the left strip: index -> letter. */
     private val locked = HashMap<Int, Char>()
 
-    private var language: String = DEFAULT_LANGUAGE
-    override val activeLanguage: String get() = language
+    /** Active dictionaries. One entry normally; several in bilingual mode. */
+    private var languages: List<String> = listOf(DEFAULT_LANGUAGE)
+
+    /** The active selection as a tag: "en", "es", or "en+es" for bilingual mode. */
+    override val activeLanguage: String get() = languages.joinToString(BILINGUAL_SEPARATOR)
+
+    /** For hints and multi-tap: the richer alphabet when Spanish is among the active set. */
+    private val hintLanguage: String get() = if ("es" in languages) "es" else languages.first()
     /** Everything configured, whether or not its dictionary has been parsed yet. */
     override val availableLanguages: List<String>
         get() = CONFIGURED_LANGUAGES.filter { it in tries || resources.openAsset("dict/$it.txt") != null }
 
-    private val activeTrie: DigitTrie get() = tries[language] ?: tries.values.firstOrNull() ?: DigitTrie()
+    private val activeTries: List<DigitTrie>
+        get() = languages.mapNotNull { tries[it] }.ifEmpty { listOfNotNull(tries.values.firstOrNull()) }
+
+    /** The first active trie — where a single-language operation should go. */
+    private val activeTrie: DigitTrie get() = activeTries.firstOrNull() ?: DigitTrie()
 
     // ---- user dictionary ------------------------------------------------------
 
@@ -135,7 +145,7 @@ class TrieEngine internal constructor(
         }
         if (tries.isEmpty()) tries[DEFAULT_LANGUAGE] = DigitTrie()
         val preferred = resources.languageTag.take(2)
-        language = if (preferred in tries) preferred else tries.keys.first()
+        languages = listOf(if (preferred in tries) preferred else tries.keys.first())
 
         learned.load()
         learned.unigrams.forEach { (word, weight) ->
@@ -178,17 +188,25 @@ class TrieEngine internal constructor(
         return trie
     }
 
+    /**
+     * Accepts a single tag ("es"), or several joined with "+" ("en+es") for bilingual
+     * mode, where candidates from every listed dictionary are offered together.
+     */
     override fun switchLanguage(languageTag: String): Boolean {
-        val tag = languageTag.take(2)
-        if (!tries.containsKey(tag)) {
-            // First use of this language: parse it now, then fold in learned words.
-            val loaded = loadDictionary(tag) ?: return false
-            learned.unigrams.forEach { (word, weight) ->
-                Keypad.encode(word)?.let { loaded.reinforce(it, word, weight, WEIGHT_CAP) }
+        val tags = languageTag.split(BILINGUAL_SEPARATOR).map { it.trim().take(2) }
+            .filter { it.isNotEmpty() }.distinct()
+        if (tags.isEmpty()) return false
+        for (tag in tags) {
+            if (!tries.containsKey(tag)) {
+                // First use of this language: parse it now, then fold in learned words.
+                val loaded = loadDictionary(tag) ?: return false
+                learned.unigrams.forEach { (word, weight) ->
+                    Keypad.encode(word)?.let { loaded.reinforce(it, word, weight, WEIGHT_CAP) }
+                }
+                tries[tag] = loaded
             }
-            tries[tag] = loaded
         }
-        language = tag
+        languages = tags
         digits.setLength(0)
         return true
     }
@@ -285,7 +303,7 @@ class TrieEngine internal constructor(
         val word = normalise(trimmed) ?: return false
         if (learned.unigrams.containsKey(word)) return true
         val encoded = Keypad.encode(word) ?: return false
-        return activeTrie.exact(encoded, 32).any { it.word == word }
+        return activeTries.any { trie -> trie.exact(encoded, 32).any { it.word == word } }
     }
 
     private fun candidatesInline(candidates: List<Candidate>, seq: String): String =
@@ -330,7 +348,7 @@ class TrieEngine internal constructor(
 
     override fun lastKeyLetters(): List<String> {
         val last = digits.lastOrNull() ?: return emptyList()
-        val base = Keypad.letterHints(last, language)?.map { it.toString() } ?: return emptyList()
+        val base = Keypad.letterHints(last, hintLanguage)?.map { it.toString() } ?: return emptyList()
 
         // Add the characters that actually occur in this position across the current
         // candidates. That is what surfaces "ñ", "í" and other accented forms — they
@@ -390,7 +408,7 @@ class TrieEngine internal constructor(
         //    whole word off a single tap is a guess too far — it takes two keys before a
         //    word is worth suggesting.
         if (seq.length == 1) {
-            Keypad.letterHints(seq[0], language)?.forEachIndexed { index, letter ->
+            Keypad.letterHints(seq[0], hintLanguage)?.forEachIndexed { index, letter ->
                 val text = letter.toString()
                 if (seen.add(text)) {
                     // Letters that are words — "I" in English, "y" in Spanish — climb the
@@ -430,14 +448,21 @@ class TrieEngine internal constructor(
         }
 
         // 3/4. dictionary and learned words for the active language
-        val trie = activeTrie
-        for (e in trie.exact(seq, MAX_CANDIDATES)) {
-            if (!matchesLocks(e.word)) continue
-            if (!seen.add(e.word)) continue
-            val isLearned = learned.unigrams.containsKey(e.word)
+        // In bilingual mode every active dictionary contributes. Words shared by both
+        // languages are collapsed, keeping whichever weight is higher.
+        val exact = LinkedHashMap<String, Int>()
+        for (trie in activeTries) {
+            for (e in trie.exact(seq, MAX_CANDIDATES)) {
+                if (!matchesLocks(e.word)) continue
+                exact[e.word] = maxOf(exact[e.word] ?: 0, e.weight)
+            }
+        }
+        for ((word, weight) in exact) {
+            if (!seen.add(word)) continue
+            val isLearned = learned.unigrams.containsKey(word)
             out += Candidate(
-                text = e.word,
-                score = EXACT_TIER + e.weight + if (isLearned) USER_BONUS else 0,
+                text = word,
+                score = EXACT_TIER + weight + if (isLearned) USER_BONUS else 0,
                 source = if (isLearned) CandidateSource.USER else CandidateSource.DICTIONARY,
                 isExactLength = true,
             )
@@ -446,10 +471,16 @@ class TrieEngine internal constructor(
         // 5. longer completions
         val room = MAX_CANDIDATES - out.size
         if (room > 0) {
-            for (e in trie.completions(seq, room)) {
-                if (!matchesLocks(e.word)) continue
-                if (!seen.add(e.word)) continue
-                out += Candidate(e.word, COMPLETION_TIER + e.weight / 2, CandidateSource.COMPLETION, false)
+            val completions = LinkedHashMap<String, Int>()
+            for (trie in activeTries) {
+                for (e in trie.completions(seq, room)) {
+                    if (!matchesLocks(e.word)) continue
+                    completions[e.word] = maxOf(completions[e.word] ?: 0, e.weight)
+                }
+            }
+            for ((word, weight) in completions.entries.sortedByDescending { it.value }.take(room)) {
+                if (!seen.add(word)) continue
+                out += Candidate(word, COMPLETION_TIER + weight / 2, CandidateSource.COMPLETION, false)
             }
         }
 
@@ -548,6 +579,8 @@ class TrieEngine internal constructor(
     companion object {
         const val ID = "trie"
         const val DEFAULT_LANGUAGE = "en"
+        /** Joins tags in a bilingual selection: "en+es". */
+        const val BILINGUAL_SEPARATOR = "+"
 
         /** Languages we try to load. A missing dictionary is simply skipped. */
         val CONFIGURED_LANGUAGES = listOf("en", "es")

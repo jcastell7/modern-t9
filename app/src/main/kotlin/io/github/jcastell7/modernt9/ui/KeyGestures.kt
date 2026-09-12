@@ -16,7 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * Resolution order after the finger goes down:
  *
- *  1. moved downward past the slop  → [onSwipeDown] (types the key's digit)
+ *  1. flicked clearly downward     → [onSwipeDown] (types the key's digit)
  *  2. held past the long-press time → [onRepeat] if the key repeats, else [onLongPress]
  *  3. lifted before either          → [onTap]
  */
@@ -46,7 +46,14 @@ fun Modifier.keyGestures(
                 if (!change.pressed) { lifted = true; break }
                 val dx = change.position.x - down.position.x
                 val dy = change.position.y - down.position.y
-                if (onSwipeDown != null && dy > slop * 1.5f && abs(dy) > abs(dx)) {
+                // A deliberate flick, not a fast tap that drifted. Three conditions
+                // together: real distance (several times the system slop), clearly
+                // vertical (twice as far down as sideways), and nothing already typed
+                // by this press. 1.5x slop was firing on ordinary fast typing.
+                if (onSwipeDown != null &&
+                    dy > slop * SWIPE_SLOP_MULTIPLIER &&
+                    dy > abs(dx) * SWIPE_VERTICAL_DOMINANCE
+                ) {
                     swiped = true
                     change.consume()
                     break
@@ -101,6 +108,11 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.rep
         interval = (interval * DECAY).toLong().coerceAtLeast(MIN_MS)
     }
 }
+
+/** Distance a swipe must travel, as a multiple of the system touch slop (~8dp). */
+private const val SWIPE_SLOP_MULTIPLIER = 5f
+/** How much further down than sideways the finger must go to count as a swipe. */
+private const val SWIPE_VERTICAL_DOMINANCE = 2f
 
 private const val START_MS = 180L
 private const val MIN_MS = 22L

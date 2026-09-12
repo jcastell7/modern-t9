@@ -102,10 +102,6 @@ fun SymbolLayer(
                     label = "",
                     onClick = { onAction(KeyAction.Space) },
                 )
-                Text(
-                    "\u25C9", color = T9Theme.textSecondary, fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 14.dp, top = 10.dp),
-                )
             }
             KeySurface(
                 modifier = Modifier.weight(1.5f).fillMaxSize(),

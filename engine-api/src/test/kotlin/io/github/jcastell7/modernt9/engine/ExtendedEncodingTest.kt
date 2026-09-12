@@ -31,7 +31,7 @@ class ExtendedEncodingTest {
 
     @Test fun `an email address encodes end to end`() {
         // j5 u8 a2 n6 @1 g4 m6 a2 i4 l5 .1 c2 o6 m6
-        assertEquals("58261462451266", Keypad.encodeExtended("user@gmail.com"))
+        assertEquals("87371462451266", Keypad.encodeExtended("user@gmail.com"))
     }
 
     @Test fun `a url encodes end to end`() {
@@ -42,7 +42,7 @@ class ExtendedEncodingTest {
     @Test fun `the prefix of a phrase is short and typeable`() {
         // Four taps of the local part is the point: it surfaces the whole address.
         val encoded = Keypad.encodeExtended("user@gmail.com")
-        assertTrue(encoded.startsWith("5826"))
+        assertTrue(encoded.startsWith("8737"))
     }
 
     @Test fun `extended encoding never returns null for any input`() {
