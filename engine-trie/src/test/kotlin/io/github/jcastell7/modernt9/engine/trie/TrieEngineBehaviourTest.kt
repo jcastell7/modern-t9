@@ -117,11 +117,12 @@ class TrieEngineBehaviourTest {
         val e = engine()
         "2222".forEach { e.onDigit(it) }
         val candidates = e.composition().candidates
-        assertEquals(1, candidates.size)
-        assertEquals(CandidateSource.LITERAL, candidates.first().source)
+        assertEquals(CandidateSource.LITERAL, candidates.last().source)
         // Composing shows one letter per key, not the digits — the digits stay available
-        // as the literal candidate.
+        // as the literal candidate, and the plain letters sit on the strip as well so
+        // the user can see what space will commit.
         assertEquals("aaaa", e.composition().composing)
+        assertEquals(listOf("aaaa", "2222"), candidates.map { it.text })
     }
 
     // ---- sessions -------------------------------------------------------------
@@ -252,7 +253,8 @@ class TrieEngineBehaviourTest {
             initialize(); startSession(EditorContext())
         }
         "4663".forEach { e.onDigit(it) }
-        assertEquals(CandidateSource.LITERAL, e.composition().candidates.single().source)
+        assertEquals(CandidateSource.LITERAL, e.composition().candidates.last().source)
+        assertEquals(listOf("gmmd", "4663"), e.composition().candidates.map { it.text })
     }
 
     @Test fun `entries without a weight default to 1`() {

@@ -107,28 +107,36 @@ class EditingAndLettersTest {
         assertEquals("mañana", resumed!!.candidates.first().text)
     }
 
-    // ---- one press, letters first ---------------------------------------------
+    // ---- one press: words first, the key's letters after them -------------------
 
-    @Test fun `a single press offers the key's letters first`() {
+    @Test fun `a single press offers words first, then the key's letters`() {
         val e = engine()
         e.onDigit('4')
-        val top = e.composition().candidates.take(3).map { it.text }
-        assertEquals(listOf("g", "h", "i"), top)
+        val texts = e.composition().candidates.map { it.text }
+        val letters = listOf("g", "h", "i")
+        assertTrue("letters must be offered: $texts", texts.containsAll(letters))
+        val firstLetter = texts.indexOfFirst { it in letters }
+        val lastWord = texts.indexOfLast { it.length > 1 && it != "4" }
+        assertTrue("words before letters in $texts", lastWord < firstLetter)
+        assertEquals(letters, texts.filter { it in letters })   // keypad order kept
     }
 
     @Test fun `letters are marked as such`() {
         val e = engine()
         e.onDigit('4')
-        assertEquals(CandidateSource.LETTER, e.composition().candidates.first().source)
+        val letters = e.composition().candidates.filter { it.text.length == 1 && it.text != "4" }
+        assertTrue(letters.all { it.source == CandidateSource.LETTER })
     }
 
-    @Test fun `a single press offers no words at all`() {
+    @Test fun `a single press still composes a letter, not a word`() {
         val e = engine()
         e.onDigit('8')                                 // "the" starts here
-        val words = e.composition().candidates.map { it.text }
-        // Committing a whole word off one tap is a guess too far.
-        assertTrue("no words on one press, got $words", !words.contains("the"))
-        assertEquals(listOf("t", "u", "v", "8"), words)
+        val texts = e.composition().candidates.map { it.text }
+        assertTrue("the word is offered on the strip: $texts", texts.contains("the"))
+        // But committing a whole word off one tap is a guess too far: inline stays a
+        // letter, and so does what space commits.
+        assertEquals("t", e.composition().composing)
+        assertEquals("t", e.commitInline())
     }
 
     @Test fun `two presses do offer words`() {
@@ -156,10 +164,11 @@ class EditingAndLettersTest {
         assertTrue(e.composition().composing.length == 3)
     }
 
-    @Test fun `letters appear only for a single press`() {
+    @Test fun `single letters appear only for a single press`() {
         val e = engine()
         "46".forEach { e.onDigit(it) }
-        assertTrue(e.composition().candidates.none { it.source == CandidateSource.LETTER })
+        // The plain reading "gm" may be offered (as a LETTER) — the key's own letters may not.
+        assertTrue(e.composition().candidates.none { it.source == CandidateSource.LETTER && it.text.length == 1 })
     }
 
     @Test fun `spanish shows enye among the letters of key 6`() {

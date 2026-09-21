@@ -62,7 +62,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true   // DebugLog stamps the version into the log header
+    }
 
     testOptions {
         // android.jar in unit tests is stubs; let them return defaults instead of throwing.

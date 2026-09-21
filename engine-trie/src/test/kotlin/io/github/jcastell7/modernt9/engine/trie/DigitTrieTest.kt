@@ -131,3 +131,38 @@ class DigitTrieTest {
         assertEquals("root", t.exact("", 10).first().word)
     }
 }
+
+/** The best-first completion search must find the heaviest words wherever they sit. */
+class DigitTrieCompletionSearchTest {
+
+    @Test fun `heavy deep words beat light shallow ones`() {
+        val t = DigitTrie().apply {
+            // Ten light 3-key words, one heavy 8-key word under the same prefix.
+            for (d in 2..9) insert("84$d", "w$d", d)
+            insert("84474464", "thinking", 6803)
+            insert("8447", "this", 199341)
+        }
+        assertEquals(listOf("this", "thinking"), t.completions("84", 2).map { it.word })
+    }
+
+    @Test fun `the search is exact for any limit`() {
+        val t = DigitTrie()
+        val words = (0 until 300).map { i -> "w$i" to (i * 7919) % 1000 }
+        words.forEachIndexed { i, (w, weight) ->
+            t.insert("2" + (i.toString(3).map { it + 2 }.joinToString("")), w, weight)
+        }
+        for (limit in listOf(1, 5, 20, 100)) {
+            val expected = words.sortedByDescending { it.second }.take(limit).map { it.second }
+            assertEquals(expected, t.completions("2", limit).map { it.weight })
+        }
+    }
+
+    @Test fun `reinforce raises a subtree so a learned word is found`() {
+        val t = DigitTrie().apply {
+            insert("2222", "aaaa", 100)
+            insert("2223", "aaad", 90)
+        }
+        t.reinforce("22234", "aaadg", 500, 1000)
+        assertEquals("aaadg", t.completions("2", 1).single().word)
+    }
+}

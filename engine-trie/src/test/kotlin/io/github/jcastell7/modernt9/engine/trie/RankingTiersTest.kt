@@ -17,9 +17,10 @@ import org.junit.Test
 /**
  * Rank ordering, and the invariant that what the editor shows is what space commits.
  *
- * Named for the reported bug: typing `test` (8378) offered `verte` (83783) first,
- * because `verte` is very common in Spanish while `test` is rare there — a completion
- * outranking an exact match.
+ * Named for the reported bug: typing `test` (8378) turned into `verte` (83783) on
+ * space, because `verte` is very common in Spanish while `test` is rare there. The
+ * strip may well list `verte` first — it is the likelier word — but the inline text
+ * is always a word of the typed length, and space commits that and nothing else.
  */
 class RankingTiersTest {
 
@@ -53,33 +54,32 @@ class RankingTiersTest {
         assertTrue(Keypad.encode("verte")!!.startsWith(Keypad.encode("test")!!))
     }
 
-    @Test fun `an exact match outranks a far heavier completion`() {
-        val e = engine()
-        type(e, "test")
-        val first = e.composition().candidates.first()
-        assertEquals("test", first.text)
-        assertEquals(CandidateSource.DICTIONARY, first.source)
-    }
-
-    @Test fun `the completion is still offered, just not first`() {
+    @Test fun `the strip is ordered by likelihood, not by length`() {
         val e = engine()
         type(e, "test")
         val texts = e.composition().candidates.map { it.text }
         assertTrue("expected verte offered, got $texts", texts.contains("verte"))
-        assertTrue(texts.indexOf("test") < texts.indexOf("verte"))
+        assertTrue("both offered: $texts", texts.contains("test"))
+        // 100x the weight, even halved for being a guess, puts the completion first.
+        assertTrue("verte is far likelier: $texts", texts.indexOf("verte") < texts.indexOf("test"))
     }
 
-    @Test fun `every exact match precedes every completion`() {
+    @Test fun `the exact match still leads when it is the likelier word`() {
         val e = engine()
-        type(e, "test")
-        val sources = e.composition().candidates
-            .filter { it.source != CandidateSource.LITERAL }
-            .map { it.source }
-        val lastExact = sources.indexOfLast { it == CandidateSource.DICTIONARY || it == CandidateSource.USER }
-        val firstCompletion = sources.indexOfFirst { it == CandidateSource.COMPLETION }
-        if (lastExact >= 0 && firstCompletion >= 0) {
-            assertTrue("exact matches must all come first", lastExact < firstCompletion)
-        }
+        type(e, "the")                                  // 843 — "the" 90000, no rival
+        assertEquals("the", e.composition().candidates.first().text)
+        assertEquals(CandidateSource.DICTIONARY, e.composition().candidates.first().source)
+    }
+
+    @Test fun `a completion is worth half its weight, an exact match all of it`() {
+        val e = engine()
+        type(e, "ver")                                  // 837: verde and verte complete it
+        val verde = e.composition().candidates.first { it.text == "verde" }
+        val verte = e.composition().candidates.first { it.text == "verte" }
+        assertTrue(verte.score > verde.score)
+        type(e, "de")                                   // 83733: verde exactly
+        val exact = e.composition().candidates.first { it.text == "verde" }
+        assertTrue("exact scores its full weight", exact.score > verde.score)
     }
 
     // ---- inline text == what space commits ------------------------------------
@@ -92,11 +92,12 @@ class RankingTiersTest {
         assertEquals("the editor must not change under the user", shown, e.commitInline())
     }
 
-    @Test fun `inline text and the first candidate agree`() {
+    @Test fun `inline text is the best exact-length candidate, wherever it sits`() {
         val e = engine()
         type(e, "test")
         val c = e.composition()
-        assertEquals(c.composing, c.candidates.first().text)
+        assertEquals("test", c.composing)
+        assertTrue(c.candidates.first { it.isExactLength }.text == c.composing)
     }
 
     @Test fun `with no exact match space commits the plain letters`() {
@@ -127,12 +128,25 @@ class RankingTiersTest {
         assertEquals(CandidateSource.USER, e.composition().candidates.first().source)
     }
 
-    @Test fun `a phrase still outranks an exact word`() {
+    @Test fun `a fresh phrase ranks like a word used once, not above everything`() {
         val e = engine()
         e.userDictionary.addPhrase("test@example.com")
         type(e, "test")
-        assertEquals("test@example.com", e.composition().candidates.first().source
-            .let { _ -> e.composition().candidates.first().text })
+        val texts = e.composition().candidates.map { it.text }
+        // verte (50000, halved) beats it; test (500) does not.
+        assertTrue("$texts", texts.indexOf("verte") < texts.indexOf("test@example.com"))
+        assertTrue("$texts", texts.indexOf("test@example.com") < texts.indexOf("test"))
+    }
+
+    @Test fun `a phrase climbs as it is chosen`() {
+        val e = engine()
+        e.userDictionary.addPhrase("test@example.com")
+        repeat(6) {
+            e.reset(); type(e, "test")
+            e.selectCandidate(e.composition().candidates.indexOfFirst { it.text == "test@example.com" })
+        }
+        e.reset(); type(e, "test")
+        assertEquals("test@example.com", e.composition().candidates.first().text)
     }
 
     @Test fun `the word being edited still outranks everything`() {
@@ -143,13 +157,14 @@ class RankingTiersTest {
         assertEquals(CandidateSource.EDITING, resumed.candidates.first().source)
     }
 
-    @Test fun `weight can never promote a candidate into the tier above`() {
+    @Test fun `use can never promote a word above the one being edited`() {
         val e = engine()
-        type(e, "test")
-        val exact = e.composition().candidates.first { it.source == CandidateSource.DICTIONARY }
-        val completion = e.composition().candidates.firstOrNull { it.source == CandidateSource.COMPLETION }
-        assertNotNull(completion)
-        assertTrue("exact ${exact.score} must beat completion ${completion!!.score}",
-            exact.score > completion.score)
+        repeat(500) { e.learn("verte") }                 // saturates the usage bonus
+        e.reset()
+        val resumed = e.resumeEditing("Test")!!          // as it stands in the document
+        val editing = resumed.candidates.first { it.source == CandidateSource.EDITING }
+        val word = resumed.candidates.first { it.text == "verte" }
+        assertNotNull(word)
+        assertTrue("editing ${editing.score} must beat word ${word.score}", editing.score > word.score)
     }
 }

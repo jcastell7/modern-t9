@@ -49,4 +49,17 @@ sealed interface KeyAction {
     data object Clipboard : KeyAction
     data class ForgetClip(val text: String) : KeyAction
     data object ClearClips : KeyAction
+
+    /**
+     * The action's name for the diagnostic log — the *kind* of action only. Anything
+     * the user typed or chose (a literal, a word, a clip) is deliberately left out.
+     */
+    fun name(): String = when (this) {
+        is Digit -> "Digit"
+        is Literal -> "Literal(${text.length})"
+        is Cursor -> "Cursor($dx,$dy)"
+        is ShowLayer -> "ShowLayer($layer)"
+        is SelectCandidate -> "SelectCandidate($index)"
+        else -> this::class.simpleName ?: "?"
+    }
 }

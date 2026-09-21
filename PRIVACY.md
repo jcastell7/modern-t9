@@ -38,6 +38,12 @@ All of the following live in the app's private storage, which other apps cannot 
 These are ordinary text files. You can inspect them, and deleting them resets the
 keyboard's learning without affecting anything else.
 
+Settings → My words lists the learned words and saved phrases, lets you remove any of
+them, and can **export** them to a text file. The export goes only where you choose to
+save it (Android's file picker; the app has no storage permission of its own) and
+contains the words, how often each was used and when it was added — nothing else.
+**Import** merges such a file back in; it never removes anything.
+
 ### What is deliberately *not* learned
 
 The keyboard does not learn from:
@@ -56,6 +62,23 @@ addresses), which is why they are not persisted. You can also clear it or remove
 entries from within the keyboard.
 
 The keyboard only observes the clipboard while it is the active input method.
+
+## Diagnostic log (off by default)
+
+Settings has a **Debug log** switch, intended for reporting bugs. While it is on, the
+keyboard appends a log of *events* to a file: when the keyboard opened, which app it
+was in, which kind of key was pressed, how long the dictionary took to load, which
+language was selected, and the stack trace of any error it caught.
+
+It never records what you type. No letters, digits, words, candidates or clipboard
+contents are written — only the kind of action (for example `Digit`, `Backspace`,
+`Literal(1)` meaning a one-character symbol) and counts.
+
+The file lives in the app's external-files directory
+(`Android/data/io.github.jcastell7.modernt9/files/logs/`) so it can be pulled over a
+USB debugging connection. It is capped at about half a megabyte, can be cleared from
+the same screen, is deleted when the app is uninstalled, and is excluded from Android
+backup. It is not sent anywhere.
 
 ## Permissions
 

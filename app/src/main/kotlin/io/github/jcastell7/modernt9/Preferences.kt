@@ -49,4 +49,14 @@ object Preferences {
 
     private const val KEY_SCALE = "keyboard_scale"
     private const val KEY_INSET = "keyboard_bottom_inset"
+
+    /** Diagnostic log to a file — see [DebugLog]. Off unless the user turns it on. */
+    fun debugLogging(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DEBUG_LOG, false)
+
+    fun setDebugLogging(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DEBUG_LOG, on).apply()
+    }
+
+    private const val KEY_DEBUG_LOG = "debug_logging"
 }

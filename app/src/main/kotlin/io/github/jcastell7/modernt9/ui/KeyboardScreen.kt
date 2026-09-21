@@ -70,6 +70,7 @@ fun KeyboardScreen(
                     candidates = if (layer == KeyboardLayer.MAIN)
                         composition.candidates.ifEmpty { nextWords } else emptyList(),
                     isPrediction = composition.candidates.isEmpty(),
+                    inline = composition.composing,
                     newWord = if (layer == KeyboardLayer.MAIN) newWord else null,
                     onAction = onAction,
                 )

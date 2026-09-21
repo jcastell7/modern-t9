@@ -35,6 +35,8 @@ fun TopStrip(
     newWord: String?,
     /** True when these are next-word guesses rather than the current composition. */
     isPrediction: Boolean,
+    /** The text shown inline in the editor — what space will commit. */
+    inline: String,
     onAction: (KeyAction) -> Unit,
 ) {
     Box(
@@ -45,7 +47,7 @@ fun TopStrip(
     ) {
         when {
             newWord != null -> NewWordBar(newWord, onAction)
-            candidates.isNotEmpty() -> CandidateRow(candidates, isPrediction, onAction)
+            candidates.isNotEmpty() -> CandidateRow(candidates, isPrediction, inline, onAction)
             else -> IconBar(onAction)
         }
     }
@@ -88,11 +90,15 @@ private fun NewWordBar(word: String, onAction: (KeyAction) -> Unit) {
     }
 }
 
-/** The candidate list. The first entry is teal — it is what space will accept. */
+/**
+ * The candidate list. The teal entry is what space will accept — the word shown inline.
+ * That is the best word *of the typed length*; a likelier longer word may sit before it.
+ */
 @Composable
 private fun CandidateRow(
     candidates: List<Candidate>,
     isPrediction: Boolean,
+    inline: String,
     onAction: (KeyAction) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -102,10 +108,11 @@ private fun CandidateRow(
             contentPadding = PaddingValues(horizontal = 6.dp),
         ) {
             itemsIndexed(candidates) { index, candidate ->
+                val accepted = if (isPrediction) index == 0 else candidate.text == inline
                 Text(
                     text = candidate.text,
                     color = when {
-                        index == 0 -> T9Theme.accent
+                        accepted -> T9Theme.accent
                         candidate.source == CandidateSource.PHRASE -> T9Theme.accent
                         candidate.source == CandidateSource.EDITING -> T9Theme.accent
                         candidate.source == CandidateSource.LETTER -> T9Theme.textPrimary
@@ -113,7 +120,7 @@ private fun CandidateRow(
                         else -> T9Theme.textPrimary
                     },
                     fontSize = 21.sp,
-                    fontWeight = if (index == 0) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = if (accepted) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
                     modifier = Modifier
                         .clickable {

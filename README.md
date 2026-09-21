@@ -62,11 +62,14 @@ Requires Android 8.0 (API 26) or newer.
 - Contractions found without the apostrophe — typing `dont` offers `don't`
 
 **Learning**
-- Learns the words you use, including single-letter words like *I* and *y*
+- Learns the words you use, including single-letter words like *I* and *y* — a word
+  you type often climbs past a common one on the same keys within a dozen uses
 - Next-word prediction from your own writing
 - **Phrases**: save email addresses, URLs or handles and reach them from the first few
   letters — `user` brings up `user@example.com`
 - Offers to save an unknown word after you type it
+- **My words** in Settings lists everything it learned or you saved — sortable, with
+  Remove, and export/import as a plain text file you can edit and carry to another phone
 - Never learns from password or number fields, or when an app requests no personalised
   learning
 
@@ -74,6 +77,10 @@ Requires Android 8.0 (API 26) or newer.
 - Symbols (two pages), an editing pane with cursor keys, select, copy/cut/paste and
   undo, a clipboard history, and an emoji picker
 - Resizable on the fly, with an adjustable gap above the navigation bar
+
+**Diagnostics**
+- An opt-in debug log (Settings → Diagnostics) records events and errors — never
+  text — to a file you can `adb pull` when reporting a bug
 
 ### Languages
 

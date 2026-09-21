@@ -181,6 +181,13 @@ interface UserDictionary {
     fun contains(word: String): Boolean
     /** All user words, highest weight first. */
     fun entries(): List<UserWord>
+
+    /**
+     * The user's words that the base dictionary does **not** contain — names, slang,
+     * misspellings learned from a space press. What a "my words" screen should list:
+     * a use count on "the" is not worth showing, "Tomasito" is.
+     */
+    fun novelWords(): List<UserWord> = entries()
     fun clear()
 
     /**
@@ -201,6 +208,22 @@ interface UserDictionary {
     /** All user phrases, highest weight first. */
     fun phrases(): List<UserWord>
 
+    /**
+     * Merge an entry from a file the user exported: the word is added if absent; if it
+     * already exists the higher use count and the earlier [UserWord.addedAt] are kept,
+     * so importing the same file twice changes nothing. Returns true if anything changed.
+     */
+    fun importWord(entry: UserWord): Boolean {
+        if (contains(entry.word)) return false
+        add(entry.word, entry.uses.coerceAtLeast(1)); return true
+    }
+
+    /** As [importWord], for a phrase. */
+    fun importPhrase(entry: UserWord): Boolean {
+        if (phrases().any { it.word == entry.word }) return false
+        addPhrase(entry.word); return true
+    }
+
     companion object {
         const val DEFAULT_WEIGHT = 1
         /** Phrases are deliberate additions, so they outrank ordinary learned words. */
@@ -208,7 +231,20 @@ interface UserDictionary {
     }
 }
 
-data class UserWord(val word: String, val weight: Int)
+/**
+ * @param weight the engine's ranking weight — a use count for learned words, a larger
+ *   number for phrases, which are deliberately ranked above them
+ * @param addedAt when the entry first appeared, epoch milliseconds; 0 when unknown
+ *   (entries from before this was recorded)
+ * @param uses how many times the user has chosen it — comparable across words and
+ *   phrases, unlike [weight]
+ */
+data class UserWord(
+    val word: String,
+    val weight: Int,
+    val addedAt: Long = 0L,
+    val uses: Int = weight,
+)
 
 /**
  * Creates engines. Register one per backend; the IME picks by

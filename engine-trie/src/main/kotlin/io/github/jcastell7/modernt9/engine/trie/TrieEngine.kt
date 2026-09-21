@@ -21,11 +21,13 @@ import io.github.jcastell7.modernt9.engine.UserWord
  * tapping the language key must not wait for I/O.
  *
  * Ranking, highest first:
- *  1. user phrases     (email addresses, URLs — deliberate additions)
- *  2. learned words    (the user's own typing)
- *  3. exact dictionary matches of the typed length
- *  4. longer completions of the typed prefix
- *  5. the literal digits, always last, so numbers stay typeable
+ *  1. the word being corrected in place
+ *  2. every word — dictionary, learned, or a saved phrase — scored by dictionary
+ *     frequency (none for the last two) plus how often the user has chosen it (see
+ *     [usageBonus]); so a word you actually use overtakes its rivals, and one you
+ *     saved but never pick sits below the common words on the same keys
+ *  3. on a single key, the key's letters — after any word suggestions
+ *  4. the literal digits, always last, so numbers stay typeable
  */
 class TrieEngine internal constructor(
     private val resources: EngineResources,
@@ -82,18 +84,14 @@ class TrieEngine internal constructor(
         override fun add(word: String, weight: Int) {
             val w = normalise(word) ?: return
             val encoded = Keypad.encode(w) ?: return
-            val value = learned.noteWord(w, weight.coerceAtLeast(1), WEIGHT_CAP)
-            tries.values.forEach { it.reinforce(encoded, w, 0, WEIGHT_CAP) }
-            activeTrie.reinforce(encoded, w, value, WEIGHT_CAP)
+            learned.noteWord(w, weight.coerceAtLeast(1), USE_CAP)
+            // Present in every trie so it is offered whichever language is active. Its
+            // rank comes from usageBonus, not from the trie weight.
+            tries.values.forEach { it.reinforce(encoded, w, LEARN_DELTA, WEIGHT_CAP) }
             learned.flush()
         }
 
-        override fun remove(word: String): Boolean {
-            val w = normalise(word) ?: return false
-            val removed = learned.forget(w)
-            if (removed) learned.flush()
-            return removed
-        }
+        override fun remove(word: String): Boolean = forgetWord(word)
 
         override fun contains(word: String): Boolean =
             normalise(word)?.let { learned.unigrams.containsKey(it) } == true
@@ -101,7 +99,17 @@ class TrieEngine internal constructor(
         override fun entries(): List<UserWord> =
             learned.unigrams.entries
                 .sortedByDescending { it.value }
-                .map { UserWord(it.key, it.value) }
+                .map { UserWord(it.key, it.value, learned.added[it.key] ?: 0L) }
+
+        /** Learned words absent from every dictionary — including ones not parsed yet. */
+        override fun novelWords(): List<UserWord> =
+            learned.unigrams.entries
+                .filter { (word, _) ->
+                    val encoded = Keypad.encode(word) ?: return@filter false
+                    tries.values.all { it.isLearned(encoded, word) }
+                }
+                .sortedByDescending { it.value }
+                .map { UserWord(it.key, it.value, learned.added[it.key] ?: 0L) }
 
         override fun clear() {
             learned.clear()
@@ -123,16 +131,51 @@ class TrieEngine internal constructor(
                 rebuildPhraseTrie()
                 phraseStore.flush()
             }
-            return removed
+            // A saved word was also learned as a plain word the moment it was typed, so
+            // removing the phrase alone left it in the predictions. Both go together.
+            return forgetWord(phrase) || removed
+        }
+
+        override fun importWord(entry: UserWord): Boolean {
+            val w = normalise(entry.word) ?: return false
+            val encoded = Keypad.encode(w) ?: return false
+            val changed = learned.merge(w, entry.uses.coerceAtLeast(1), entry.addedAt)
+            if (changed) {
+                tries.values.forEach { it.reinforce(encoded, w, LEARN_DELTA, WEIGHT_CAP) }
+                learned.flush()
+            }
+            return changed
+        }
+
+        override fun importPhrase(entry: UserWord): Boolean {
+            val p = entry.word.trim()
+            if (p.isEmpty()) return false
+            val changed = phraseStore.merge(p, UserDictionary.PHRASE_WEIGHT, entry.uses, entry.addedAt)
+            if (changed) {
+                phraseTrie.reinforce(Keypad.encodeExtended(p), p, 0, WEIGHT_CAP)
+                rebuildPhraseTrie()
+                phraseStore.flush()
+            }
+            return changed
         }
 
         override fun phrases(): List<UserWord> =
             phraseStore.phrases.entries
                 .sortedByDescending { it.value }
-                .map { UserWord(it.key, it.value) }
+                .map { UserWord(it.key, it.value, phraseStore.added[it.key] ?: 0L, phraseStore.uses[it.key] ?: 0) }
     }
 
     override val userDictionary: UserDictionary get() = userDict
+
+    /** Drop a learned word everywhere: the store, its bigrams, and every trie. */
+    private fun forgetWord(word: String): Boolean {
+        val w = normalise(word) ?: return false
+        val removed = learned.forget(w)
+        Keypad.encode(w)?.let { encoded -> tries.values.forEach { it.remove(encoded, w) } }
+        if (removed) learned.flush()
+        if (lastCommitted == w) lastCommitted = null
+        return removed
+    }
 
     // ---- lifecycle ------------------------------------------------------------
 
@@ -148,9 +191,9 @@ class TrieEngine internal constructor(
         languages = listOf(if (preferred in tries) preferred else tries.keys.first())
 
         learned.load()
-        learned.unigrams.forEach { (word, weight) ->
+        learned.unigrams.keys.forEach { word ->
             Keypad.encode(word)?.let { encoded ->
-                tries.values.forEach { t -> t.reinforce(encoded, word, weight, WEIGHT_CAP) }
+                tries.values.forEach { t -> t.reinforce(encoded, word, LEARN_DELTA, WEIGHT_CAP) }
             }
         }
 
@@ -200,8 +243,8 @@ class TrieEngine internal constructor(
             if (!tries.containsKey(tag)) {
                 // First use of this language: parse it now, then fold in learned words.
                 val loaded = loadDictionary(tag) ?: return false
-                learned.unigrams.forEach { (word, weight) ->
-                    Keypad.encode(word)?.let { loaded.reinforce(it, word, weight, WEIGHT_CAP) }
+                learned.unigrams.keys.forEach { word ->
+                    Keypad.encode(word)?.let { loaded.reinforce(it, word, LEARN_DELTA, WEIGHT_CAP) }
                 }
                 tries[tag] = loaded
             }
@@ -385,7 +428,7 @@ class TrieEngine internal constructor(
     }
 
     private fun buildCandidates(seq: String): List<Candidate> {
-        val out = ArrayList<Candidate>(MAX_CANDIDATES + 1)
+        val out = ArrayList<Candidate>(MAX_CANDIDATES + 2)
         val seen = HashSet<String>()
 
         // 0. The word being corrected in place stays first, so re-opening a word never
@@ -404,50 +447,57 @@ class TrieEngine internal constructor(
             }
         }
 
-        // 1. One key pressed: offer that key's letters and nothing else. Committing a
-        //    whole word off a single tap is a guess too far — it takes two keys before a
-        //    word is worth suggesting.
+        // 1. One key pressed: word suggestions first, then the key's own letters.
+        //    The letters stay the exact-length candidates, so a bare letter is still
+        //    what space commits — the words are one tap away on the strip.
         if (seq.length == 1) {
+            addCompletions(out, seen, seq)
+            val letters = ArrayList<Candidate>(4)
             Keypad.letterHints(seq[0], hintLanguage)?.forEachIndexed { index, letter ->
                 val text = letter.toString()
                 if (seen.add(text)) {
                     // Letters that are words — "I" in English, "y" in Spanish — climb the
                     // list as they are used, so a frequent one becomes the default rather
-                    // than staying stuck in keypad order. Learned weight is bounded by
-                    // WEIGHT_CAP, so this stays inside the LETTER tier.
-                    val used = learned.unigrams[text] ?: 0
-                    val isWord = used > 0
+                    // than staying stuck in keypad order.
+                    val used = usageBonus(text)
                     // A letter chosen from the left strip is pinned at position 0. This
-                    // branch returns early and skipped matchesLocks(), so the pin was
-                    // silently ignored — tapping the strip on a single press did nothing.
-                    // The pinned letter must come first, above any learned weight.
-                    val pinned = locked[0]?.let { Keypad.foldToAscii(letter.toString()).first() == it || letter == it } == true
-                    out += Candidate(
+                    // branch skips matchesLocks(), so the pin must be honoured here — it
+                    // comes first, above any learned weight.
+                    val pinned = locked[0]?.let { Keypad.foldToAscii(text).first() == it || letter == it } == true
+                    letters += Candidate(
                         text = text,
                         score = LETTER_RANK + (if (pinned) PIN_BONUS else 0) + used - index,
-                        source = if (isWord) CandidateSource.USER else CandidateSource.LETTER,
+                        source = if (used > 0) CandidateSource.USER else CandidateSource.LETTER,
                         isExactLength = true,
                     )
                 }
             }
             out.sortByDescending { it.score }
+            letters.sortByDescending { it.score }
+            out += letters
             out += Candidate(seq, Int.MIN_VALUE, CandidateSource.LITERAL)
             return out
         }
 
-        // 2. user phrases — exact, then as completions of the typed prefix
+        // 2. user phrases — exact, then as completions of the typed prefix. Scored on
+        //    the same scale as every other word: a phrase has no dictionary frequency,
+        //    so it starts where a word used once starts and climbs only as it is chosen.
+        //    Saving something does not make it beat words you actually type.
         for (e in phraseTrie.exact(seq, MAX_PHRASES)) {
             if (seen.add(e.word)) {
-                out += Candidate(e.word, PHRASE_TIER + e.weight, CandidateSource.PHRASE, true)
+                out += Candidate(e.word, WORD_TIER + phraseScore(e.word), CandidateSource.PHRASE, true)
             }
         }
         for (e in phraseTrie.completions(seq, MAX_PHRASES)) {
             if (seen.add(e.word)) {
-                out += Candidate(e.word, PHRASE_TIER + e.weight - 1, CandidateSource.PHRASE, false)
+                out += Candidate(e.word, WORD_TIER + phraseScore(e.word), CandidateSource.PHRASE, false)
             }
         }
 
-        // 3/4. dictionary and learned words for the active language
+        // 3. dictionary and learned words: words of the typed length and longer
+        //    completions together, ranked by frequency plus the user's own use of
+        //    each. The strip is ordered by likelihood — "work" before "wop" — while the
+        //    inline text is still the best word of the typed length (candidatesInline).
         // In bilingual mode every active dictionary contributes. Words shared by both
         // languages are collapsed, keeping whichever weight is higher.
         val exact = LinkedHashMap<String, Int>()
@@ -459,36 +509,86 @@ class TrieEngine internal constructor(
         }
         for ((word, weight) in exact) {
             if (!seen.add(word)) continue
-            val isLearned = learned.unigrams.containsKey(word)
+            val used = usageBonus(word)
             out += Candidate(
                 text = word,
-                score = EXACT_TIER + weight + if (isLearned) USER_BONUS else 0,
-                source = if (isLearned) CandidateSource.USER else CandidateSource.DICTIONARY,
+                score = WORD_TIER + weight + used,
+                source = if (used > 0) CandidateSource.USER else CandidateSource.DICTIONARY,
                 isExactLength = true,
             )
         }
-
-        // 5. longer completions
-        val room = MAX_CANDIDATES - out.size
-        if (room > 0) {
-            val completions = LinkedHashMap<String, Int>()
-            for (trie in activeTries) {
-                for (e in trie.completions(seq, room)) {
-                    if (!matchesLocks(e.word)) continue
-                    completions[e.word] = maxOf(completions[e.word] ?: 0, e.weight)
-                }
-            }
-            for ((word, weight) in completions.entries.sortedByDescending { it.value }.take(room)) {
-                if (!seen.add(word)) continue
-                out += Candidate(word, COMPLETION_TIER + weight / 2, CandidateSource.COMPLETION, false)
-            }
-        }
+        addCompletions(out, seen, seq)
 
         out.sortByDescending { it.score }
-        // 6. the literal digits, always available
+
+        // 4. What space will commit — the best word of the typed length — must be on
+        //    the strip, however far down its weight puts it: it is kept through the cut
+        //    below, and where nothing of that length is known the plain letters of the
+        //    keys pressed take its place. Either way it comes after the real words.
+        val inline = out.firstOrNull { it.isExactLength }
+        while (out.size > MAX_CANDIDATES) out.removeAt(out.size - 1)
+        when {
+            inline == null -> {
+                val plain = defaultLetters(seq)
+                if (seen.add(plain)) out += Candidate(plain, LETTER_RANK, CandidateSource.LETTER, true)
+            }
+            inline !in out -> {
+                out.removeAt(out.size - 1)
+                out += inline
+            }
+        }
+        // 5. the literal digits, always available
         out += Candidate(seq, Int.MIN_VALUE, CandidateSource.LITERAL)
         return out
     }
+
+    /**
+     * Add the heaviest completions of [seq] from every active dictionary. Halved, since
+     * they guess at letters not yet typed — but the user's own use of a word counts in
+     * full, so a habitual word is offered as soon as its first keys are down.
+     */
+    private fun addCompletions(out: MutableList<Candidate>, seen: MutableSet<String>, seq: String) {
+        val completions = LinkedHashMap<String, Int>()
+        for (trie in activeTries) {
+            for (e in trie.completions(seq, MAX_COMPLETIONS)) {
+                if (!matchesLocks(e.word)) continue
+                completions[e.word] = maxOf(completions[e.word] ?: 0, e.weight)
+            }
+        }
+        for ((word, weight) in completions) {
+            if (!seen.add(word)) continue
+            out += Candidate(
+                text = word,
+                score = WORD_TIER + weight / 2 + usageBonus(word),
+                source = CandidateSource.COMPLETION,
+                isExactLength = false,
+            )
+        }
+    }
+
+    /**
+     * What a word's own history is worth, on the dictionary's weight scale.
+     *
+     * Quadratic at first: a word typed once or twice moves a little, one used a dozen
+     * times overtakes even a very common rival on the same keys, and by
+     * [SATURATION_USES] it has matched the heaviest dictionary weight. Past that it
+     * keeps climbing, linearly at [LATE_STEP] per use, so two habitual words on the same
+     * keys still order by which is used more — 75 uses of "un" must beat 37 of "to",
+     * however common "to" is. Bounded by [USAGE_MAX], which keeps the tier above out of
+     * reach. Dictionary weights run from 1 to [WEIGHT_CAP], so a single use (= [USE_STEP])
+     * is already worth more than most of the long tail.
+     */
+    private fun usageBonus(word: String): Int = usageBonus(learned.unigrams[word] ?: 0)
+
+    private fun usageBonus(uses: Int): Int {
+        val u = uses.toLong()
+        val bonus = if (u <= SATURATION_USES) u * u * USE_STEP
+            else SATURATION_USES * SATURATION_USES * USE_STEP + (u - SATURATION_USES) * LATE_STEP
+        return bonus.coerceAtMost(USAGE_MAX.toLong()).toInt()
+    }
+
+    /** A saved phrase's worth: adding it counts as one use, every pick adds another. */
+    private fun phraseScore(phrase: String): Int = usageBonus((phraseStore.uses[phrase] ?: 0) + 1)
 
     // ---- committing -----------------------------------------------------------
 
@@ -538,11 +638,11 @@ class TrieEngine internal constructor(
         if (!shouldLearn()) { lastCommitted = word; return }
 
         Keypad.encode(word)?.let { encoded ->
-            val weight = learned.noteWord(word, LEARN_DELTA, WEIGHT_CAP)
-            // Applied to every language: a name or a borrowing is the user's word,
-            // whichever dictionary happens to be active.
-            tries.values.forEach { it.reinforce(encoded, word, 0, WEIGHT_CAP) }
-            tries.values.forEach { it.reinforce(encoded, word, weight, WEIGHT_CAP) }
+            learned.noteWord(word, 1, USE_CAP)
+            // Present in every language: a name or a borrowing is the user's word,
+            // whichever dictionary happens to be active. The trie weight only decides
+            // retrieval order inside a node; the rank comes from usageBonus.
+            tries.values.forEach { it.reinforce(encoded, word, LEARN_DELTA, WEIGHT_CAP) }
         }
         lastCommitted?.let { learned.noteBigram(it, word, WEIGHT_CAP) }
         lastCommitted = word
@@ -595,32 +695,49 @@ class TrieEngine internal constructor(
         )
 
         private const val MAX_CANDIDATES = 12
+        /** Completions fetched per dictionary; the strip then keeps the best overall. */
+        private const val MAX_COMPLETIONS = 8
         private const val MAX_PHRASES = 4
         private const val MAX_NEXT_WORDS = 3
+        /** Trie weight of a learned word: enough to be retrieved, not enough to rank. */
         private const val LEARN_DELTA = 8
         private const val PHRASE_USE_DELTA = 50
         private const val WEIGHT_CAP = 1_000_000
-        private const val USER_BONUS = 500
-        /** Puts phrases above any dictionary word. */
+        /** Learned use counts stop growing here. */
+        private const val USE_CAP = 100_000
+        /** One use, squared, on the dictionary weight scale — see [usageBonus]. */
+        private const val USE_STEP = 2_000L
+        /** Uses at which the quadratic part has matched the heaviest dictionary word. */
+        private const val SATURATION_USES = 22L
+        /** Each use beyond that is worth this much — see [usageBonus]. */
+        private const val LATE_STEP = 20_000L
         private const val MAX_PREDICTED_STRIP = 6
 
         /**
-         * Candidate ranking is tiered, and a word's weight only ever breaks ties *within*
-         * a tier. The gap is wider than [WEIGHT_CAP] plus [USER_BONUS], so no amount of
-         * frequency can push a candidate into the tier above.
+         * Candidate ranking is tiered, and a word's score only ever breaks ties *within*
+         * a tier. The gap is wider than [WEIGHT_CAP], so no amount of frequency or use
+         * can push a candidate into the tier above: the word being edited beats
+         * everything.
          *
-         * This is what stops a common completion displacing an exact match — the bug
-         * where typing "test" offered "verte" first, because "verte" is a five-letter
-         * word on the same first four keys.
+         * Dictionary words, learned words, saved phrases, words of the typed length and
+         * completions all share one tier, scored as frequency (zero for anything the
+         * dictionary lacks) plus [usageBonus] — the strip is ordered by how likely each
+         * entry is, whatever its origin. What keeps "test" from
+         * turning into "verte" under the user is that the inline text is always the
+         * best *exact-length* word, and space commits exactly that (see [commitInline]).
          */
-        private const val TIER = 2_000_000
+        // Frequency (≤ WEIGHT_CAP) plus usage (≤ USAGE_MAX) is never clipped: two words
+        // both heavily used must still order by which is used more. Their sum fits in
+        // one tier by construction of USAGE_MAX; 5 × TIER still fits an Int.
+        private const val TIER = 250_000_000
+        /** The usage bonus never exceeds this, so frequency + usage stays inside one tier. */
+        private const val USAGE_MAX = TIER - WEIGHT_CAP - 1
         private const val EDITING_RANK = 5 * TIER
-        private const val PHRASE_TIER = 4 * TIER
-        private const val LETTER_RANK = 3 * TIER
-        private const val EXACT_TIER = 2 * TIER
-        private const val COMPLETION_TIER = 1 * TIER
-        /** Puts a strip-pinned letter above any learned weight, still inside its tier. */
-        private const val PIN_BONUS = WEIGHT_CAP + 1
+        /** Dictionary words, learned words and saved phrases all rank here, by frequency plus use. */
+        private const val WORD_TIER = 2 * TIER
+        /** Bare letters — a single key's, or the plain reading of several — below every word. */
+        private const val LETTER_RANK = 0
+        private const val PIN_BONUS = USAGE_MAX + 10
     }
 }
 

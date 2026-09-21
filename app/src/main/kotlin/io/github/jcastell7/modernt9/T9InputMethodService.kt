@@ -84,6 +84,16 @@ class T9InputMethodService :
     /** Select mode in the editing pane: arrow keys extend a selection while on. */
     private var selecting by mutableStateOf(false)
 
+    /** Where the selection grows from while [selecting]; -1 when unknown. */
+    private var selectionAnchor = -1
+
+    /**
+     * The shift state a multi-tap letter was started with. Cycling the same key must
+     * keep that case — "A" then "B" then "C" — rather than dropping to lower case after
+     * the first tap because shift-once had already been consumed.
+     */
+    private var multiTapShift: ShiftState? = null
+
     /**
      * Keys pressed before the dictionary finished loading.
      *
@@ -99,6 +109,8 @@ class T9InputMethodService :
         savedStateController.performRestore(null)
         super.onCreate()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        DebugLog.configure(this)
+        DebugLog.i("ime", "onCreate")
         ClipboardHistory.start(this)
         metrics = KeyboardMetrics(
             scale = Preferences.keyboardScale(this),
@@ -106,13 +118,22 @@ class T9InputMethodService :
         )
         // Dictionary loading is I/O; keep it off the main thread.
         scope.launch {
-            val loaded = withContext(Dispatchers.IO) {
-                Engines.create(this@T9InputMethodService, Preferences.engineId(this@T9InputMethodService))
+            val started = android.os.SystemClock.elapsedRealtime()
+            val loaded = try {
+                withContext(Dispatchers.IO) {
+                    Engines.create(this@T9InputMethodService, Preferences.engineId(this@T9InputMethodService))
+                }
+            } catch (t: Throwable) {
+                DebugLog.e("engine", "failed to load", t)
+                throw t
             }
             // Restore the language the user last chose.
             Preferences.language(this@T9InputMethodService)?.let(loaded::switchLanguage)
             languageTag = loaded.activeLanguage
             engine = loaded
+            DebugLog.i("engine", "${loaded.descriptor.id} v${loaded.descriptor.version} ready in " +
+                "${android.os.SystemClock.elapsedRealtime() - started}ms · language ${loaded.activeLanguage} · " +
+                "${pendingActions.size} queued actions")
             // Replay anything typed while we were loading.
             while (pendingActions.isNotEmpty()) handleAction(pendingActions.removeFirst())
         }
@@ -193,6 +214,14 @@ class T9InputMethodService :
 
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         super.onStartInput(info, restarting)
+        DebugLog.i("ime", "onStartInput ${info?.packageName} type=${fieldTypeFor(info?.inputType ?: 0)} " +
+            "restarting=$restarting prediction=$predictionOn")
+        // A commit made while prediction was off never had its selection update seen
+        // (those are ignored in ABC mode), so the flag would otherwise stay armed and
+        // swallow the next real caret move.
+        justCommitted = false
+        selecting = false
+        selectionAnchor = -1
         val engine = engine ?: return
         engine.startSession(
             EditorContext(
@@ -245,35 +274,58 @@ class T9InputMethodService :
         super.onUpdateSelection(
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd,
         )
-        if (newSelStart != newSelEnd) return          // a selection, not a caret
         val engine = engine ?: return
         val ic = currentInputConnection ?: return
+
+        if (newSelStart != newSelEnd) {
+            // A selection, not a caret. Whatever word was open for editing is closed:
+            // the next key must act on the selection, not on the composition.
+            if (!composition.isEmpty) {
+                ic.finishComposingText()
+                composition = engine.reset()
+                stripLetters = emptyList()
+            }
+            return
+        }
 
         // With prediction off, placing the caret in a word must not hand it to the
         // predictor. ABC mode edits letter by letter, exactly where the caret is.
         if (!predictionOn) return
 
-        // Android tells us the composing region directly. A caret still inside it means
-        // this update is our own doing — far more reliable than a "suppress" flag, which
-        // could swallow a real tap whenever updates and edits did not pair up exactly.
-        if (candidatesStart >= 0 && newSelStart in candidatesStart..candidatesEnd) return
-
         if (justCommitted) { justCommitted = false; return }
-
-        // The caret has left the word we were composing: close it before looking at
-        // whatever the caret landed in. Without this, moving from one word to another
-        // kept the first word's candidates on screen.
-        if (!composition.isEmpty) {
-            ic.finishComposingText()
-            composition = engine.reset()
-            stripLetters = emptyList()
-        }
 
         val before = ic.getTextBeforeCursor(CONTEXT_CHARS, 0)?.toString().orEmpty()
         val after = ic.getTextAfterCursor(CONTEXT_CHARS, 0)?.toString().orEmpty()
         val left = before.takeLastWhile { it.isWordChar() }
         val right = after.takeWhile { it.isWordChar() }
         val word = left + right
+
+        if (!composition.isEmpty) {
+            val inside = candidatesStart >= 0 && newSelStart in candidatesStart..candidatesEnd
+            if (inside) {
+                // Our own edits always leave the caret where the engine says it is.
+                // Anywhere else inside the word means the user moved it — the engine's
+                // caret must follow, or the next backspace deletes the wrong letter and
+                // then, at caret 0, nothing at all. (Reported as: "it deletes the letter
+                // I just added and then won't delete the rest of the word".)
+                val offset = newSelStart - candidatesStart
+                if (offset == composition.cursor) return
+                val moved = engine.resumeEditing(word, left.length)
+                if (moved != null) {
+                    DebugLog.i("edit", "caret moved inside word: ${composition.cursor} -> ${left.length}")
+                    composition = moved
+                    stripLetters = engine.lastKeyLetters()
+                    return
+                }
+            }
+            // The caret has left the word we were composing: close it before looking at
+            // whatever the caret landed in. Without this, moving from one word to
+            // another kept the first word's candidates on screen.
+            ic.finishComposingText()
+            composition = engine.reset()
+            stripLetters = emptyList()
+        }
+
         if (word.length < MIN_EDITABLE_WORD) return
 
         // left.length is where the caret sits inside the word.
@@ -292,6 +344,7 @@ class T9InputMethodService :
     }
 
     override fun onDestroy() {
+        DebugLog.i("ime", "onDestroy")
         if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
@@ -311,8 +364,14 @@ class T9InputMethodService :
         val engine = engine ?: run {
             // Not ready yet — remember it rather than dropping it.
             if (pendingActions.size < MAX_PENDING) pendingActions.addLast(action)
+            DebugLog.w("ime", "engine not ready, queued ${action.name()} (${pendingActions.size})")
             return
         }
+        // A throwing handler must not take the keyboard down with it — log, recover.
+        DebugLog.guard("action ${action.name()}", Unit) { dispatch(engine, action) }
+    }
+
+    private fun dispatch(engine: InputEngine, action: KeyAction) {
         when (action) {
             is KeyAction.Digit -> {
                 finishPunctuation()
@@ -381,6 +440,15 @@ class T9InputMethodService :
             }
 
             KeyAction.Backspace -> {
+                // With text selected, backspace deletes the selection — nothing else.
+                if (currentInputConnection?.getSelectedText(0)?.isNotEmpty() == true) {
+                    settleMultiTap()
+                    finishPunctuation()
+                    currentInputConnection?.commitText("", 1)
+                    clearComposingState()
+                    nextWords = emptyList()
+                    return
+                }
                 if (multiTap.pending != null) {
                     settleMultiTap()
                     currentInputConnection?.deleteSurroundingText(1, 0)
@@ -392,12 +460,19 @@ class T9InputMethodService :
                     currentInputConnection?.deleteSurroundingText(1, 0)
                     return
                 }
+                // Deleting is never a request for what might come next: the offers
+                // for the previous word must not reappear as this one is erased.
+                nextWords = emptyList()
                 if (composition.isEmpty) {
                     currentInputConnection?.deleteSurroundingText(1, 0)
                 } else {
                     composition = engine.onBackspace()
                     newWord = null
                     stripLetters = engine.lastKeyLetters()
+                    // The last key gone: the composing text must go with it.
+                    // finishComposingText() alone would *keep* that letter in the
+                    // editor as ordinary text.
+                    if (composition.isEmpty) currentInputConnection?.commitText("", 1)
                     showComposing()
                 }
             }
@@ -419,6 +494,7 @@ class T9InputMethodService :
 
             KeyAction.TogglePrediction -> {
                 predictionOn = !predictionOn
+                DebugLog.i("ime", "prediction ${if (predictionOn) "on" else "off"}")
                 // Leaving either mode must not strand a half-finished word.
                 settleMultiTap()
                 if (!composition.isEmpty) engine.commitInline()?.let { commit(applyShift(it)) }
@@ -456,6 +532,7 @@ class T9InputMethodService :
                     val modes = languages + languages.joinToString("+")
                     val next = modes[(modes.indexOf(engine.activeLanguage) + 1) % modes.size]
                     if (engine.switchLanguage(next)) {
+                        DebugLog.i("ime", "language -> $next")
                         Preferences.setLanguage(this, next)
                         languageTag = next
                         punctuation.configure(fieldTypeFor(currentInputEditorInfo?.inputType ?: 0), next)
@@ -485,7 +562,8 @@ class T9InputMethodService :
             KeyAction.ToggleGestures -> Unit   // not implemented yet
 
             // ---- editing pane ----
-            is KeyAction.Cursor -> moveCursor(action.dx, action.dy)
+            is KeyAction.Cursor ->
+                if (selecting) extendSelection(action.dx, action.dy) else moveCursor(action.dx, action.dy)
             KeyAction.SelectAll -> currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
             KeyAction.Copy -> currentInputConnection?.performContextMenuAction(android.R.id.copy)
             KeyAction.Cut -> currentInputConnection?.performContextMenuAction(android.R.id.cut)
@@ -499,10 +577,17 @@ class T9InputMethodService :
                 }
             }
 
-            // Select is a mode: while on, the arrow keys extend a selection.
-            KeyAction.SelectToggle -> selecting = !selecting
-            KeyAction.Home -> sendKeyWithMeta(KeyEvent.KEYCODE_MOVE_HOME, selectionMeta())
-            KeyAction.End -> sendKeyWithMeta(KeyEvent.KEYCODE_MOVE_END, selectionMeta())
+            // Select is a mode: while on, the arrow keys extend a selection from the
+            // caret position at the moment it was switched on.
+            KeyAction.SelectToggle -> {
+                selecting = !selecting
+                selectionAnchor = if (selecting) snapshot()?.selStart ?: -1 else -1
+                DebugLog.i("edit", "select ${if (selecting) "on @$selectionAnchor" else "off"}")
+            }
+            KeyAction.Home -> if (selecting) extendToLineEdge(start = true)
+                else sendKeyWithMeta(KeyEvent.KEYCODE_MOVE_HOME, 0)
+            KeyAction.End -> if (selecting) extendToLineEdge(start = false)
+                else sendKeyWithMeta(KeyEvent.KEYCODE_MOVE_END, 0)
             KeyAction.Clipboard -> layer = KeyboardLayer.CLIPBOARD
 
             is KeyAction.ForgetClip -> {
@@ -526,32 +611,48 @@ class T9InputMethodService :
     private fun multiTapDigit(digit: Char) {
         val ic = currentInputConnection ?: return
         val letters = MultiTap.lettersFor(digit, engine?.activeLanguage ?: "en")
-        val result = multiTap.tap(digit, letters, System.currentTimeMillis())
-        if (result.append) ic.finishComposingText()
-        ic.setComposingText(applyShift(result.letter), 1)
-        if (shiftState == ShiftState.ONCE) shiftState = ShiftState.OFF
+        val now = System.currentTimeMillis()
+        if (!multiTap.continues(digit, now)) {
+            // A new letter: the previous one is final (and spends shift-once, if it
+            // used it). The case of this one is decided now and kept while it cycles.
+            settleMultiTap()
+            multiTapShift = shiftState
+        }
+        val result = multiTap.tap(digit, letters, now)
+        ic.setComposingText(applyShift(result.letter, multiTapShift ?: shiftState), 1)
         composition = Composition.Empty
         nextWords = emptyList()
     }
 
-    /** Settle any pending multi-tap letter before something else happens. */
+    /**
+     * Settle any pending multi-tap letter before something else happens. Shift-once is
+     * spent here, when the letter is final, not on the first tap.
+     */
     private fun settleMultiTap() {
+        if (multiTapShift == ShiftState.ONCE && shiftState == ShiftState.ONCE) shiftState = ShiftState.OFF
+        multiTapShift = null
         if (multiTap.pending == null) return
         currentInputConnection?.finishComposingText()
         multiTap.finish()
     }
 
     /** Commit a character directly, accepting any pending word first. */
-    private fun insertLiteral(text: String) {
+    private fun insertLiteral(raw: String) {
         val engine = engine ?: return
         finishPunctuation()
         settleMultiTap()
         if (!composition.isEmpty) {
             engine.commitInline()?.let {
                 currentInputConnection?.commitText(applyShift(it), 1)
+                if (shiftState == ShiftState.ONCE) shiftState = ShiftState.OFF
             }
         }
         val ic = currentInputConnection
+        // A letter picked from the long-press panel is typed like any other letter:
+        // it takes the shift state, and spends shift-once.
+        val text = if (raw.any { it.isLetter() }) applyShift(raw).also {
+            if (shiftState == ShiftState.ONCE) shiftState = ShiftState.OFF
+        } else raw
         if (predictionOn && text in Punctuation.CLOSING) {
             // Prediction leaves a space after every accepted word. A closing mark must
             // attach to that word, so the space is swallowed, the mark inserted, and a
@@ -612,19 +713,97 @@ class T9InputMethodService :
     }
 
 
-    private fun moveCursor(dx: Int, dy: Int) {
+    private fun moveCursor(dx: Int, dy: Int) = moveCursorWithMeta(dx, dy, 0)
+
+    /**
+     * The editor's text and selection as absolute offsets. Null when the editor does
+     * not support extraction — WebViews and some custom fields — in which case select
+     * mode falls back to shift+arrow key events.
+     */
+    private class TextSnapshot(val text: CharSequence, val start: Int, val selStart: Int, val selEnd: Int)
+
+    private fun snapshot(): TextSnapshot? {
+        val ic = currentInputConnection ?: return null
+        val ex = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return null
+        val text = ex.text ?: return null
+        if (ex.selectionStart < 0 || ex.selectionEnd < 0) return null
+        return TextSnapshot(text, ex.startOffset, ex.startOffset + ex.selectionStart, ex.startOffset + ex.selectionEnd)
+    }
+
+    /**
+     * Grow or shrink the selection by one step in select mode.
+     *
+     * Done with `setSelection` on the extracted text rather than shift+arrow key events:
+     * an IME's synthetic key events carry no real modifier state, and most editors
+     * ignore the shift flag on them — the caret moved, but nothing was ever selected.
+     */
+    private fun extendSelection(dx: Int, dy: Int) {
+        val snap = snapshot()
+        val ic = currentInputConnection
+        if (snap == null || ic == null) {
+            // Best effort where the text cannot be read.
+            moveCursorWithMeta(dx, dy, KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)
+            return
+        }
+        if (selectionAnchor < 0) selectionAnchor = snap.selStart
+        val anchor = selectionAnchor
+        // The end that moves is whichever one is not the anchor.
+        val moving = if (snap.selStart == anchor) snap.selEnd else snap.selStart
+        val target = when {
+            dx != 0 -> moving + dx
+            else -> lineStep(snap, moving, dy)
+        }.coerceIn(snap.start, snap.start + snap.text.length)
+        ic.setSelection(anchor, target)
+    }
+
+    /** Select from the anchor to the start or end of the moving end's line. */
+    private fun extendToLineEdge(start: Boolean) {
+        val snap = snapshot()
+        val ic = currentInputConnection
+        if (snap == null || ic == null) {
+            sendKeyWithMeta(
+                if (start) KeyEvent.KEYCODE_MOVE_HOME else KeyEvent.KEYCODE_MOVE_END,
+                KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON,
+            )
+            return
+        }
+        if (selectionAnchor < 0) selectionAnchor = snap.selStart
+        val moving = if (snap.selStart == selectionAnchor) snap.selEnd else snap.selStart
+        val rel = moving - snap.start
+        val target = if (start) snap.text.lastIndexOf('\n', rel - 1) + 1
+            else snap.text.indexOf('\n', rel).let { if (it < 0) snap.text.length else it }
+        ic.setSelection(selectionAnchor, snap.start + target)
+    }
+
+    /** The offset one line up (dy < 0) or down from [from], keeping the column. */
+    private fun lineStep(snap: TextSnapshot, from: Int, dy: Int): Int {
+        val text = snap.text
+        val rel = (from - snap.start).coerceIn(0, text.length)
+        val lineStart = text.lastIndexOf('\n', rel - 1) + 1
+        val column = rel - lineStart
+        val target = if (dy < 0) {
+            if (lineStart == 0) return snap.start
+            val prevStart = text.lastIndexOf('\n', lineStart - 2) + 1
+            minOf(prevStart + column, lineStart - 1)
+        } else {
+            val lineEnd = text.indexOf('\n', rel).let { if (it < 0) text.length else it }
+            if (lineEnd == text.length) return snap.start + text.length
+            val nextStart = lineEnd + 1
+            val nextEnd = text.indexOf('\n', nextStart).let { if (it < 0) text.length else it }
+            minOf(nextStart + column, nextEnd)
+        }
+        return snap.start + target
+    }
+
+    private fun moveCursorWithMeta(dx: Int, dy: Int, meta: Int) {
         val code = when {
             dx < 0 -> KeyEvent.KEYCODE_DPAD_LEFT
             dx > 0 -> KeyEvent.KEYCODE_DPAD_RIGHT
             dy < 0 -> KeyEvent.KEYCODE_DPAD_UP
             else -> KeyEvent.KEYCODE_DPAD_DOWN
         }
-        sendKeyWithMeta(code, selectionMeta())
+        sendKeyWithMeta(code, meta)
     }
-
-    /** Shift held while Select mode is on, so cursor keys grow a selection. */
-    private fun selectionMeta(): Int =
-        if (selecting) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
 
     /**
      * Send a key with modifier flags — `sendDownUpKeyEvents` cannot carry any, which is
@@ -655,8 +834,10 @@ class T9InputMethodService :
     private fun showComposing() {
         val ic = currentInputConnection ?: return
         if (composition.isEmpty) {
+            // Reached by backspacing the last key away. Nothing was finished, so there
+            // is nothing to predict a successor for — the strip goes back to idle.
             ic.finishComposingText()
-            nextWords = engine?.predictNextWord().orEmpty()
+            nextWords = emptyList()
             return
         }
 
@@ -722,7 +903,7 @@ class T9InputMethodService :
         return first.isWhitespace() || first in SEPARATORS
     }
 
-    private fun applyShift(text: String): String = when (shiftState) {
+    private fun applyShift(text: String, state: ShiftState = shiftState): String = when (state) {
         ShiftState.OFF -> text
         ShiftState.ONCE -> text.replaceFirstChar { it.uppercase() }
         ShiftState.LOCK -> text.uppercase()
