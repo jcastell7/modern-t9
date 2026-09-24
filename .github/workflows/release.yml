@@ -1,0 +1,144 @@
+# Tag a version, get a signed APK on the Releases page.
+#
+#     git tag v1.0.0 && git push origin v1.0.0
+#
+# Requires four repository secrets (Settings → Secrets and variables → Actions):
+#
+#   KEYSTORE_BASE64     base64 of the release keystore:  base64 -w0 modern-t9-release.jks
+#   KEYSTORE_PASSWORD   its store password
+#   KEY_ALIAS           the key alias inside it
+#   KEY_PASSWORD        the key password (same as the store password for a PKCS12 keystore)
+#
+# The keystore itself must never be committed. It is written to a temporary file for the
+# length of the build and deleted afterwards.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write        # needed to create the release and upload the APK
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # release notes are generated from history
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install the Android SDK packages the build needs
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platforms;android-36" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # A tag that disagrees with the version in the build file produces a release whose
+      # APK reports a different version than its own name. Catch it before anything is
+      # published rather than after.
+      - name: Check the tag matches versionName
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::run this workflow from a tag (git tag v1.0.0 && git push origin v1.0.0)"
+            exit 1
+          fi
+          tag="${GITHUB_REF_NAME#v}"
+          name=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          if [ "$tag" != "$name" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match versionName $name in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "version=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: ./gradlew test
+
+      # Written where the build expects it. The values come in as environment variables
+      # so they are never part of a command line, and Actions masks them in the log.
+      - name: Write the signing config
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 is not set — the release would be unsigned"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build the release APK
+        run: ./gradlew :app:assembleRelease
+
+      # The build falls back to an unsigned APK when the keystore is missing or
+      # unreadable, so prove the signature exists rather than trusting that it does.
+      - name: Verify the signature
+        run: |
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/release/app-release.apk
+
+      - name: Name the APK and checksum it
+        id: apk
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          apk="modern-t9-$version.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 < "$apk.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.apk.outputs.apk }}
+          SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          {
+            echo 'Install by downloading `'"$APK"'` below. Android will warn that the file'
+            echo 'comes from outside an app store; that is expected for a direct download.'
+            echo
+            echo '**SHA-256**'
+            echo
+            echo '```'
+            echo "$SHA256  $APK"
+            echo '```'
+            echo
+            echo 'Verify it before installing:'
+            echo
+            echo '```'
+            echo "sha256sum -c $APK.sha256"
+            echo '```'
+          } > release-notes.md
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            "$APK" "$APK.sha256" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            $prerelease
+
+      # Runs even if an earlier step failed, so a failed build never leaves the key
+      # sitting in the workspace.
+      - name: Remove the keystore
+        if: always()
+        run: rm -f keystore.properties "$RUNNER_TEMP/release.jks"

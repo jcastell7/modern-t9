@@ -3,10 +3,13 @@
 A T9 keyboard for current Android that never touches the network — with a prediction
 engine you can swap out.
 
+[![CI](https://github.com/jcastell7/modern-t9/actions/workflows/ci.yml/badge.svg)](https://github.com/jcastell7/modern-t9/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 <!-- Screenshot: replace with a real capture of the main keyboard pane, ~1080 px wide.
      Suggested path: docs/screenshots/main.png  (also used by fastlane/ for F-Droid) -->
 <p align="center">
-  <img src="docs/screenshots/main.png" alt="Modern T9 main keyboard pane" width="360">
+  <img src="images/keyboard-install.png" alt="Modern T9 main keyboard pane" width="360">
 </p>
 
 ---
@@ -99,11 +102,16 @@ Requires JDK 17+ and the Android SDK with platform 36.
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-./gradlew test testDebugUnitTest        # 297 tests, JVM only — no emulator needed
+./gradlew test                          # 349 tests, JVM only — no emulator needed
 ```
 
 The prediction engine and its data model are pure Kotlin with no Android dependency,
 which is why the whole engine test suite runs on the JVM in about a second.
+
+Every push runs the same tests, lint and a debug build on CI. Pushing a `v*` tag builds
+the release APK, signs it, and publishes it to
+[Releases](https://github.com/jcastell7/modern-t9/releases) with its SHA-256 — see
+[`.github/workflows`](.github/workflows).
 
 ### Rebuilding the dictionaries
 

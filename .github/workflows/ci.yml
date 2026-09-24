@@ -1,0 +1,63 @@
+# Tests and a debug build on every push and pull request.
+#
+# The release APK is built by release.yml, which needs the signing secrets; this
+# workflow deliberately needs nothing but the checkout, so forks and pull requests
+# from them run green.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The runner image ships an Android SDK but not necessarily the platform this
+      # project compiles against. Installing it explicitly keeps the build independent
+      # of whatever the image happens to contain this month.
+      - name: Install the Android SDK packages the build needs
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platforms;android-36" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew test
+
+      - name: Lint
+        run: ./gradlew :app:lintRelease
+
+      - name: Debug APK
+        run: ./gradlew :app:assembleDebug
+
+      # Uploaded even when the build fails — that is when they are worth reading.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/tests/**
+            **/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+          retention-days: 14
