@@ -1,0 +1,3 @@
+Fixes the build on machines that do not have a JDK 17 installation. The two pure-Kotlin engine modules asked Gradle for a JDK 17 toolchain rather than simply targeting Java 17 bytecode, so building the project failed on any other JDK — including F-Droid's build server. The compiled output is byte-for-byte equivalent.
+
+The keyboard itself is unchanged from 1.0.1.

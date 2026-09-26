@@ -1,0 +1,3 @@
+Corrige la compilación en equipos que no tienen instalado un JDK 17. Los dos módulos de Kotlin puro le pedían a Gradle un toolchain JDK 17 en vez de simplemente generar bytecode de Java 17, así que la compilación fallaba con cualquier otro JDK, incluido el servidor de compilación de F-Droid. El resultado compilado es equivalente.
+
+El teclado no cambia respecto a la 1.0.1.
