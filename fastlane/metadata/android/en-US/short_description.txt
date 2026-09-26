@@ -1,0 +1,1 @@
+Predictive T9 keyboard with no network access and no telemetry

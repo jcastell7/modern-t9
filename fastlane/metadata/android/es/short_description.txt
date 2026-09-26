@@ -1,0 +1,1 @@
+Teclado T9 predictivo sin acceso a la red ni telemetría

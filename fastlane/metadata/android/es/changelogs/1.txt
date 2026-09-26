@@ -1,0 +1,5 @@
+Primera versión pública.
+
+Español (Latinoamérica) e inglés (EE. UU.), utilizables a la vez. Palabras aprendidas, frases guardadas, modo ABC de pulsación múltiple, panel de edición, historial del portapapeles y selector de emojis.
+
+Límites conocidos: la pantalla de ajustes está solo en inglés y las teclas aún no tienen descripciones para lectores de pantalla.

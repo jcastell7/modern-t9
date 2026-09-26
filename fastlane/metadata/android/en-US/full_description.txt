@@ -1,0 +1,28 @@
+Nine-key predictive text for current Android, and nothing else. Modern T9 declares no permissions at all — without the INTERNET permission the system would refuse a network connection even if the keyboard attempted one.
+
+A keyboard is the most privileged app on a phone: it sees every password, every message, every search. Modern T9 is built so that privilege costs you nothing.
+
+Privacy by construction
+
+- No INTERNET permission and no networking code of any kind.
+- No analytics, ads, telemetry or crash reporting.
+- Learned words and saved phrases stay in app-private storage, as plain text files you can read yourself.
+- Clipboard history is held in memory only and is never written to disk.
+- Android's backup carries your settings and deliberately leaves your dictionary behind.
+
+Typing
+
+- Real T9 prediction over English (US) and Spanish (Latin America) dictionaries — one language at a time, or both at once.
+- ABC multi-tap when you would rather spell a word out letter by letter.
+- A strip down the left side for saying which letter a key meant, accented forms and ñ included.
+- Saved phrases for email addresses, URLs and handles: tap the first few keys of the code and the whole thing is offered.
+- It learns the words you actually use, so they move to the front over time.
+- Long-press a key for accents and symbols; flick a key downward for its digit.
+- Closing punctuation attaches to the word you just finished instead of drifting off after a space.
+- Tap into a word to reopen it and choose a different spelling in place.
+- An editing pane with cursor keys, selection, copy, cut, paste and undo. A clipboard history. An emoji picker.
+- Adjustable keyboard height and clearance above the navigation bar.
+
+The prediction engine sits behind a small interface and is a replaceable module, so a different backend can be dropped in without touching the keyboard itself.
+
+Free software under the GNU General Public License, version 3 or later. The dictionaries are built from the OpenSubtitles 2018 word frequency lists published by HermitDave/FrequencyWords, used under CC BY-SA 4.0.

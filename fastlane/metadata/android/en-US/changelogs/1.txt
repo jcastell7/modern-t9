@@ -1,0 +1,5 @@
+First public release.
+
+English (US) and Spanish (Latin America), usable together. Learned words, saved phrases, multi-tap ABC mode, an editing pane, clipboard history and an emoji picker.
+
+Known limits: the settings screen is English only, and key glyphs have no content descriptions yet, so screen-reader support is incomplete.

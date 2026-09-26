@@ -1,0 +1,28 @@
+Texto predictivo de nueve teclas para el Android actual, y nada más. Modern T9 no declara ningún permiso: sin el permiso INTERNET, el sistema rechazaría cualquier conexión aunque el teclado intentara abrirla.
+
+El teclado es la aplicación con más privilegios del teléfono: ve todas las contraseñas, todos los mensajes, todas las búsquedas. Modern T9 está hecho para que ese privilegio no te cueste nada.
+
+Privacidad por construcción
+
+- Sin permiso INTERNET y sin nada de código de red.
+- Sin analíticas, publicidad, telemetría ni informes de errores.
+- Las palabras aprendidas y las frases guardadas se quedan en el almacenamiento privado de la aplicación, en archivos de texto que puedes leer tú mismo.
+- El historial del portapapeles vive solo en memoria y nunca se escribe en disco.
+- La copia de seguridad de Android se lleva tus ajustes y deja tu diccionario aquí, a propósito.
+
+Escritura
+
+- Predicción T9 real con diccionarios de español (Latinoamérica) e inglés (EE. UU.): un idioma a la vez, o los dos al mismo tiempo.
+- Modo ABC de pulsación múltiple para cuando prefieras escribir letra por letra.
+- Una franja en el lado izquierdo para indicar qué letra querías de cada tecla, con acentos y ñ incluidos.
+- Frases guardadas para correos, URLs y usuarios: pulsa las primeras teclas del código y aparece completa.
+- Aprende las palabras que de verdad usas y las va adelantando.
+- Pulsación larga para acentos y símbolos; desliza una tecla hacia abajo para su número.
+- Los signos de cierre se pegan a la palabra que acabas de terminar en vez de quedarse sueltos tras un espacio.
+- Toca una palabra para reabrirla y elegir otra escritura en su sitio.
+- Un panel de edición con flechas, selección, copiar, cortar, pegar y deshacer. Historial del portapapeles. Selector de emojis.
+- Altura del teclado y separación sobre la barra de navegación ajustables.
+
+El motor de predicción está detrás de una interfaz pequeña y es un módulo reemplazable: se puede sustituir por otro sin tocar el teclado.
+
+Software libre bajo la Licencia Pública General de GNU, versión 3 o posterior. Los diccionarios se construyen a partir de las listas de frecuencia de OpenSubtitles 2018 publicadas por HermitDave/FrequencyWords, usadas bajo CC BY-SA 4.0.
