@@ -1,0 +1,4 @@
+Packaging and store-listing release. The keyboard itself is unchanged from 1.0.0 — nothing about typing, prediction, languages or stored data is different.
+
+- The F-Droid listing now has screenshots, a full description and a Spanish translation.
+- The build verifies gradle-wrapper.jar against Gradle's published checksums on every change, and pins the SHA-256 of the Gradle distribution it downloads.

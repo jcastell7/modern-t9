@@ -1,0 +1,4 @@
+Versión de empaquetado y ficha de la tienda. El teclado no cambia respecto a la 1.0.0: la escritura, la predicción, los idiomas y los datos guardados siguen igual.
+
+- La ficha de F-Droid ya tiene capturas, descripción completa y traducción al español.
+- La compilación verifica gradle-wrapper.jar con las sumas publicadas por Gradle y fija el SHA-256 de la distribución que descarga.
