@@ -1,0 +1,6 @@
+Makes the build reproducible, so the APK published on F-Droid can be the one signed by the developer rather than rebuilt and re-signed.
+
+- The Android build-tools version is now pinned, instead of whichever version happened to be installed doing the compiling.
+- Git metadata is no longer embedded in the APK; it differed between any two checkouts.
+
+The keyboard itself is unchanged from 1.0.2.

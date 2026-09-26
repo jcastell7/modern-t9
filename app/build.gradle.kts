@@ -14,12 +14,17 @@ android {
     namespace = "io.github.jcastell7.modernt9"
     compileSdk = 36
 
+    // Pinned for reproducible builds. Left unset, AGP picks whichever build-tools happen
+    // to be installed, so aapt2 and d8 differ between machines and the APK does not
+    // reproduce. CI installs exactly this version.
+    buildToolsVersion = "35.0.0"
+
     defaultConfig {
         applicationId = "io.github.jcastell7.modernt9"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
     }
 
     // Release signing. The keystore and its passwords live in keystore.properties, which
@@ -52,6 +57,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // AGP otherwise embeds git metadata (repo URL, branch, commit) in
+            // META-INF/version-control-info.textproto. It differs between any two
+            // checkouts, so a rebuild elsewhere can never match byte for byte.
+            vcsInfo { include = false }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (hasSigning) signingConfig = signingConfigs.getByName("release")
         }

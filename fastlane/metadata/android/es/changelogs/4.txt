@@ -1,0 +1,6 @@
+Hace que la compilación sea reproducible, para que el APK publicado en F-Droid pueda ser el firmado por el desarrollador en vez de uno recompilado y vuelto a firmar.
+
+- La versión de build-tools de Android ahora está fijada, en lugar de usar la que estuviera instalada.
+- El APK ya no incluye metadatos de git, que cambiaban entre copias del repositorio.
+
+El teclado no cambia respecto a la 1.0.2.
