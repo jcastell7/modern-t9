@@ -23,8 +23,8 @@ android {
         applicationId = "io.github.jcastell7.modernt9"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
     }
 
     // Release signing. The keystore and its passwords live in keystore.properties, which
@@ -83,6 +83,15 @@ android {
 
     // Dictionaries are already compact text; compressing them costs startup time.
     androidResources { noCompress += "txt" }
+
+    // AGP otherwise writes a Play-Console-only proto of the dependency tree into the APK
+    // signing block (5.7 KB under block ID 0x504b4453). It is useless outside Play, it is
+    // opaque binary metadata in an otherwise auditable APK, and F-Droid's scanner rejects
+    // any unexpected signing block.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 dependencies {

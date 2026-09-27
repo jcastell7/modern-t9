@@ -1,0 +1,3 @@
+Elimina un bloque de metadatos de Google Play que las herramientas de compilación de Android incluyen por defecto en cada paquete: un registro de las dependencias del proyecto, pensado para la Play Console y sin utilidad fuera de ahí. Ya no se incluye, así que el paquete solo contiene la aplicación y su firma.
+
+El teclado no cambia respecto a la 1.0.3.
